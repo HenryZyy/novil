@@ -78,6 +78,10 @@ func New(st *store.Store, tokens *auth.Tokens, opts Options) http.Handler {
 
 	mux.HandleFunc("GET /api/users", s.guard(adminOnly, s.listUsers))
 	mux.HandleFunc("POST /api/users", s.guard(adminOnly, s.createUser))
+	mux.HandleFunc("PUT /api/me/avatar", s.guard(member, s.setMyAvatar))
+	mux.HandleFunc("DELETE /api/me/avatar", s.guard(member, s.deleteMyAvatar))
+	mux.HandleFunc("GET /api/users/{id}/avatar", s.guard(member, s.getAvatar))
+	mux.HandleFunc("DELETE /api/users/{id}/avatar", s.guard(adminOnly, s.deleteUserAvatar))
 	mux.HandleFunc("PATCH /api/users/{id}", s.guard(adminOnly, s.updateUser))
 	mux.HandleFunc("PUT /api/users/{id}/password", s.guard(adminOnly, s.resetPassword))
 	mux.HandleFunc("DELETE /api/users/{id}", s.guard(adminOnly, s.deleteUser))

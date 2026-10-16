@@ -5,8 +5,11 @@ import (
 	"encoding/binary"
 	"errors"
 	"hash/crc32"
+	"image"
 	"image/color"
+	"image/draw"
 	"image/jpeg"
+	"image/png"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -148,6 +151,47 @@ func TestFromUpload(t *testing.T) {
 		if _, err := FromUpload(strings.NewReader(body)); !errors.Is(err, ErrNotAnImage) {
 			t.Errorf("%s: %v, want ErrNotAnImage", name, err)
 		}
+	}
+}
+
+func TestAvatarFromUpload(t *testing.T) {
+	// 300x100: blue | red | blue. The square from the middle is all red.
+	img := image.NewRGBA(image.Rect(0, 0, 300, 100))
+	draw.Draw(img, img.Bounds(), image.NewUniform(blue), image.Point{}, draw.Src)
+	draw.Draw(img, image.Rect(100, 0, 200, 100), image.NewUniform(red), image.Point{}, draw.Src)
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatal(err)
+	}
+	data, err := AvatarFromUpload(&buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := jpeg.Decode(bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b := out.Bounds(); b.Dx() != 100 || b.Dy() != 100 {
+		t.Errorf("avatar is %dx%d, want the 100x100 middle", b.Dx(), b.Dy())
+	}
+	for _, p := range []image.Point{{5, 50}, {50, 50}, {94, 50}} {
+		r, g, b, _ := out.At(p.X, p.Y).RGBA()
+		if c := (color.RGBA{uint8(r >> 8), uint8(g >> 8), uint8(b >> 8), 255}); !near(c, red) {
+			t.Errorf("pixel %v is %v, want red", p, c)
+		}
+	}
+
+	// Large pictures shrink to AvatarSize.
+	data, err = AvatarFromUpload(bytes.NewReader(testutil.PNG(t, 2000, 1500, red)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w, h, _ := decodeJPEG(t, data); w != AvatarSize || h != AvatarSize {
+		t.Errorf("avatar is %dx%d, want %d square", w, h, AvatarSize)
+	}
+
+	if _, err := AvatarFromUpload(strings.NewReader("MZ not an image")); !errors.Is(err, ErrNotAnImage) {
+		t.Errorf("exe: %v, want ErrNotAnImage", err)
 	}
 }
 

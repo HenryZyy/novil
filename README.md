@@ -73,6 +73,10 @@ a `code` to check instead of the message:
 | `POST /api/auth/logout` | logged in¹ | Log out this token |
 | `GET /api/me` | logged in¹ | The current user |
 | `PUT /api/me/password` | logged in¹ | Change your own password |
+| `PUT /api/me/avatar` | user | Upload your profile picture, see below |
+| `DELETE /api/me/avatar` | user | Remove your profile picture |
+| `GET /api/users/{id}/avatar` | user | A user's profile picture as a JPEG, `404` without one |
+| `DELETE /api/users/{id}/avatar` | admin | Remove someone's profile picture |
 | `GET /api/users` | admin | List users |
 | `POST /api/users` | admin | `{"username", "password", "role"}` creates a user (`role`: `user` (default) or `admin`). They must change the password after logging in |
 | `PATCH /api/users/{id}` | admin | `{"username"}` renames a user, `{"role": "admin"}` or `"user"` changes their role (not your own). Either or both; applies on the user's next request |
@@ -139,6 +143,17 @@ Admins replace a cover with `PUT /api/books/{id}/cover` (the image file as
 the body: JPEG, PNG, GIF or WebP, up to 20 MB) and go back to the automatic one
 with `DELETE /api/books/{id}/cover`. Both return the book; `customCover` says
 whether an uploaded cover is in use.
+
+### Profile pictures
+
+Profile pictures are stored on the server, so they're the same on every
+device. Upload one with `PUT /api/me/avatar`, the image file as the body
+(JPEG, PNG, GIF or WebP, up to 20 MB). The server cuts the middle square out
+and scales it to at most 256×256, so there's no need to resize it first.
+
+Users carry `hasAvatar`; show `GET /api/users/{id}/avatar` when it's true and
+initials otherwise. Like covers, the picture answers `If-None-Match` with
+`304` until it changes. Upload and both deletes return the updated user.
 
 Thanks to the cookie, `<img src="/api/books/1/pages/1">` and download links
 work in the browser as they are. Other clients send the header.

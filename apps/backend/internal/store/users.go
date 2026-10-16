@@ -19,18 +19,25 @@ type User struct {
 	Role               string    `json:"role"`
 	MustChangePassword bool      `json:"mustChangePassword"`
 	CreatedAt          time.Time `json:"createdAt"`
-	PasswordHash       string    `json:"-"`
-	TokenVersion       int       `json:"-"`
+	// HasAvatar says whether GET /api/users/{id}/avatar has a picture.
+	HasAvatar bool `json:"hasAvatar"`
+	// AvatarUpdatedAt is when the picture last changed, empty without one.
+	AvatarUpdatedAt string `json:"-"`
+	PasswordHash    string `json:"-"`
+	TokenVersion    int    `json:"-"`
 }
 
-const userColumns = `id, username, password_hash, role, must_change_password, token_version, created_at`
+const userColumns = `id, username, password_hash, role, must_change_password, token_version, created_at,
+	COALESCE(avatar_updated_at, '')`
 
 func scanUser(row interface{ Scan(...any) error }) (User, error) {
 	var u User
 	var created string
-	if err := row.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Role, &u.MustChangePassword, &u.TokenVersion, &created); err != nil {
+	if err := row.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Role, &u.MustChangePassword, &u.TokenVersion, &created,
+		&u.AvatarUpdatedAt); err != nil {
 		return u, err
 	}
+	u.HasAvatar = u.AvatarUpdatedAt != ""
 	var err error
 	u.CreatedAt, err = time.Parse(time.RFC3339, created)
 	return u, err

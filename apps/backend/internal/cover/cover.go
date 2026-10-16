@@ -147,13 +147,36 @@ func decode(r io.Reader) (image.Image, error) {
 }
 
 // encode scales img down to fit MaxWidth x MaxHeight and returns it as a
-// JPEG. Transparent parts become white, since JPEG has no transparency.
+// JPEG.
 func encode(img image.Image) ([]byte, error) {
 	b := img.Bounds()
 	w, h := fit(b.Dx(), b.Dy(), MaxWidth, MaxHeight)
+	return scaleJPEG(img, b, w, h)
+}
+
+// AvatarSize is the width and height of profile pictures.
+const AvatarSize = 256
+
+// AvatarFromUpload checks that r is an image and turns it into a square
+// profile picture: the middle of the image, at most AvatarSize wide.
+func AvatarFromUpload(r io.Reader) ([]byte, error) {
+	img, err := decode(r)
+	if err != nil {
+		return nil, err
+	}
+	b := img.Bounds()
+	side := min(b.Dx(), b.Dy())
+	x, y := b.Min.X+(b.Dx()-side)/2, b.Min.Y+(b.Dy()-side)/2
+	size := min(side, AvatarSize)
+	return scaleJPEG(img, image.Rect(x, y, x+side, y+side), size, size)
+}
+
+// scaleJPEG scales the part src of img to w x h and returns it as a JPEG.
+// Transparent parts become white, since JPEG has no transparency.
+func scaleJPEG(img image.Image, src image.Rectangle, w, h int) ([]byte, error) {
 	out := image.NewRGBA(image.Rect(0, 0, w, h))
 	draw.Draw(out, out.Bounds(), image.NewUniform(color.White), image.Point{}, draw.Src)
-	draw.CatmullRom.Scale(out, out.Bounds(), img, b, draw.Over, nil)
+	draw.CatmullRom.Scale(out, out.Bounds(), img, src, draw.Over, nil)
 	var buf bytes.Buffer
 	if err := jpeg.Encode(&buf, out, &jpeg.Options{Quality: quality}); err != nil {
 		return nil, err
