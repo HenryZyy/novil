@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { fileUrl, type Book } from '../api/client'
 import type { FoliateView, Location, TocItem } from 'foliate-js/view.js'
+import { Dropdown } from '../components/Dropdown'
 import { Icon } from '../components/Icon'
 import { useIsDark } from '../theme'
 import { MenuSection, MenuStepper, ReaderMenuPanel, SettingRow, ThemeRow } from './MenuParts'
@@ -104,6 +105,8 @@ export function EpubReader({ book }: { book: Book }) {
     let view: FoliateView | undefined
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLSelectElement || e.target instanceof HTMLInputElement) return
+      // Open dropdowns handle their own keys.
+      if (e.defaultPrevented || (e.target instanceof Element && e.target.closest('[role="menu"]'))) return
       if (e.key === 'm' || e.key === 'M') setMenuOpen((open) => !open)
       else if (e.key === 'Escape') setMenuOpen(false)
       else if (e.key === 'ArrowLeft') view?.goLeft()
@@ -269,6 +272,20 @@ export function EpubReader({ book }: { book: Book }) {
                 onClick={() => update({ flow: settings.flow === 'paginated' ? 'scrolled' : 'paginated' })}
               />
               <div className="setting-row">
+                <Icon name="font" />
+                <span>Font</span>
+                <Dropdown
+                  label="Font"
+                  value={settings.font}
+                  choices={(Object.keys(fonts) as FontName[]).map((name) => ({
+                    value: name,
+                    label: fonts[name].label,
+                    style: { fontFamily: fonts[name].family || undefined },
+                  }))}
+                  onChange={(font) => update({ font })}
+                />
+              </div>
+              <div className="setting-row">
                 <Icon name="textSize" />
                 <span>Text size</span>
                 <span className="size-controls">
@@ -288,23 +305,6 @@ export function EpubReader({ book }: { book: Book }) {
                     <Icon name="plus" size={16} />
                   </button>
                 </span>
-              </div>
-            </MenuSection>
-
-            <MenuSection title="Font">
-              <div className="font-choices" role="radiogroup" aria-label="Font">
-                {(Object.keys(fonts) as FontName[]).map((name) => (
-                  <button
-                    key={name}
-                    role="radio"
-                    aria-checked={settings.font === name}
-                    style={{ fontFamily: fonts[name].family || undefined }}
-                    onClick={() => update({ font: name })}
-                  >
-                    <span className="font-sample" aria-hidden>Aa</span>
-                    <span className="font-name">{fonts[name].label}</span>
-                  </button>
-                ))}
               </div>
             </MenuSection>
 

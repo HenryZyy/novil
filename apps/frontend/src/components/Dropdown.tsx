@@ -1,7 +1,8 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react'
 import { Icon, type IconName } from './Icon'
 
-export type Choice<T extends string> = { value: T; label: string }
+// The style shows a choice as it would look, like a font in itself.
+export type Choice<T extends string> = { value: T; label: string; style?: CSSProperties }
 
 // A button that opens a menu of choices, for filters and sorting. Arrow keys
 // move through the choices, Enter picks one, Escape or a click outside closes.
@@ -15,7 +16,7 @@ export function Dropdown<T extends string>({
   defaultValue,
 }: {
   label: string
-  icon: IconName
+  icon?: IconName
   value: T
   choices: Choice<T>[]
   onChange: (value: T) => void
@@ -86,8 +87,8 @@ export function Dropdown<T extends string>({
         aria-label={`${label}: ${current.label}`}
         title={`${label}: ${current.label}`}
       >
-        <Icon name={icon} size={18} />
-        {!iconOnly && <span>{current.label}</span>}
+        {icon && <Icon name={icon} size={18} />}
+        {!iconOnly && <span style={current.style}>{current.label}</span>}
         {!iconOnly && <Icon name="chevronDown" size={16} />}
       </button>
       {open && (
@@ -110,7 +111,7 @@ export function Dropdown<T extends string>({
                 close()
               }}
             >
-              <span>{c.label}</span>
+              <span style={c.style}>{c.label}</span>
               {c.value === value && <Icon name="check" size={16} />}
             </button>
           ))}

@@ -1432,52 +1432,14 @@ td {
   text-align: center;
 }
 
-.font-choices {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.5rem;
-  padding: 0.25rem 1.25rem;
-}
-
-.font-choices button {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.1rem;
-  min-width: 0;
-  padding: 0.5rem 0.75rem;
-  border: 1px solid var(--reader-border);
-  border-radius: 8px;
+.setting-row .toolbar-button {
+  height: 2.25rem;
+  padding: 0 0.4rem 0 0.75rem;
+  border-color: var(--reader-border);
   background: transparent;
-  color: inherit;
-  font-size: 0.85rem;
-  text-align: left;
-}
-
-.font-choices button > * {
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.font-choices .font-sample {
-  font-size: 1.5rem;
-  line-height: 1.2;
-}
-
-.font-choices .font-name {
-  font-size: 0.85rem;
-}
-
-.font-choices button:hover {
-  border-color: var(--muted);
-}
-
-.font-choices button[aria-checked='true'] {
-  border-color: var(--accent);
-  box-shadow: inset 0 0 0 1px var(--accent);
   color: var(--accent);
+  font-size: 0.875rem;
+  font-weight: 500;
 }
 
 .reader-menu-hint {
