@@ -17,13 +17,32 @@ type session struct {
 	User      store.User `json:"user"`
 }
 
-func (s *Server) writeSession(w http.ResponseWriter, user store.User) {
+// tokenCookie carries the token for browsers, which can't add an
+// Authorization header to <img> tags, links and downloads. HttpOnly keeps it
+// away from scripts, and SameSite=Lax keeps other sites from sending it with
+// their requests.
+const tokenCookie = "novil_token"
+
+func (s *Server) writeSession(w http.ResponseWriter, r *http.Request, user store.User) {
 	token, exp, err := s.tokens.Issue(user.ID, user.TokenVersion)
 	if err != nil {
 		internalError(w, err)
 		return
 	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     tokenCookie,
+		Value:    token,
+		Path:     "/",
+		Expires:  exp,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   r.TLS != nil,
+	})
 	writeJSON(w, http.StatusOK, session{Token: token, ExpiresAt: exp, User: user})
+}
+
+func clearTokenCookie(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{Name: tokenCookie, Path: "/", MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteLaxMode})
 }
 
 func (s *Server) login(w http.ResponseWriter, r *http.Request) {
@@ -46,7 +65,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		writeCodedError(w, http.StatusUnauthorized, "invalid_credentials", "wrong username or password")
 		return
 	}
-	s.writeSession(w, user)
+	s.writeSession(w, r, user)
 }
 
 // logout revokes the token of this request. The user's other devices stay
@@ -57,6 +76,7 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 		internalError(w, err)
 		return
 	}
+	clearTokenCookie(w)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -98,5 +118,5 @@ func (s *Server) changePassword(w http.ResponseWriter, r *http.Request) {
 		respond(w, nil, err)
 		return
 	}
-	s.writeSession(w, user)
+	s.writeSession(w, r, user)
 }

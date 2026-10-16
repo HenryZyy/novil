@@ -28,6 +28,9 @@ All endpoints except `/health` and `/api/auth/login` need a token:
 Authorization: Bearer <token>
 ```
 
+Browsers don't need the header: logging in also sets the token as an
+HttpOnly `novil_token` cookie, which the server accepts too.
+
 ### Login flow
 
 1. `POST /api/auth/login` with `{"username": "...", "password": "..."}`
@@ -39,8 +42,9 @@ Authorization: Bearer <token>
 3. A password change returns a new session like the login does. **Replace the
    stored token**: all older tokens of that user stop working.
 
-`POST /api/auth/logout` revokes the token it is sent with; delete it on the
-client too. The user's other devices stay logged in.
+`POST /api/auth/logout` revokes the token it is sent with and clears the
+cookie; delete a stored token on the client too. The user's other devices
+stay logged in.
 
 Login and password changes are rate limited per IP: 5 attempts at once, then
 one more every 12 seconds. Beyond that the API answers `429` with a
@@ -90,9 +94,8 @@ a `code` to check instead of the message:
 "user" means any logged-in user who has set their own password; admins can
 do everything users can. Progress is per user.
 
-Since the token is a header, `<img src="/api/books/1/pages/1">` doesn't work
-directly: fetch the image with the header and show it via
-`URL.createObjectURL(blob)`.
+Thanks to the cookie, `<img src="/api/books/1/pages/1">` and download links
+work in the browser as they are. Other clients send the header.
 
 For browser apps on another origin (like the Vite dev server), list it in
 `NOVIL_CORS_ORIGINS`.

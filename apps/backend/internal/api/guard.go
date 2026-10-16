@@ -31,8 +31,10 @@ type authInfo struct {
 	claims auth.Claims
 }
 
-// guard wraps a handler so it only runs for requests with a valid
-// "Authorization: Bearer <token>" header from a user with the given access.
+// guard wraps a handler so it only runs for requests with a valid token from
+// a user with the given access. The token comes from an
+// "Authorization: Bearer <token>" header or, for browsers, the cookie set at
+// login.
 // The handler gets that user with currentUser.
 func (s *Server) guard(a access, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -57,8 +59,12 @@ func (s *Server) guard(a access, next http.HandlerFunc) http.HandlerFunc {
 func (s *Server) authenticate(w http.ResponseWriter, r *http.Request) (authInfo, bool) {
 	token, ok := bearerToken(r)
 	if !ok {
-		unauthorized(w, "missing bearer token")
-		return authInfo{}, false
+		c, err := r.Cookie(tokenCookie)
+		if err != nil || c.Value == "" {
+			unauthorized(w, "missing bearer token")
+			return authInfo{}, false
+		}
+		token = c.Value
 	}
 	claims, err := s.tokens.Parse(token)
 	if err != nil {
