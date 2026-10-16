@@ -20,7 +20,8 @@ export function SeriesPage() {
   const [expanded, setExpanded] = useState(false)
   // A state, not a ref: the info only exists once the series has loaded.
   const [info, setInfo] = useState<HTMLDivElement | null>(null)
-  const coverHeight = useHeight(info)
+  // Measured with the description collapsed, so "More" doesn't grow the cover.
+  const coverHeight = useHeight(info, expanded)
 
   if (series.isPending || books.isPending) return <p>Loading…</p>
   if (series.isError) return <p className="error">{series.error.message}</p>
@@ -35,7 +36,7 @@ export function SeriesPage() {
 
   return (
     <>
-      <div className="series-header">
+      <div className={`series-header${single ? ' single' : ''}`}>
         <div className="series-cover" style={coverHeight ? { height: coverHeight, width: (coverHeight * 2) / 3 } : undefined}>
           <Cover bookId={s.coverBookId} title={s.name} />
         </div>
@@ -107,10 +108,10 @@ export function SeriesPage() {
 
 // The cover is as tall as the information beside it. On narrow screens,
 // where the cover sits above, it keeps its own size.
-function useHeight(el: HTMLElement | null) {
+function useHeight(el: HTMLElement | null, frozen: boolean) {
   const [height, setHeight] = useState(0)
   useEffect(() => {
-    if (!el) return
+    if (!el || frozen) return
     const wide = matchMedia('(min-width: 601px)')
     // Between 220 and 460px, so a long description doesn't make it huge.
     const update = () => setHeight(wide.matches ? Math.min(Math.max(el.offsetHeight, 220), 460) : 0)
@@ -121,7 +122,7 @@ function useHeight(el: HTMLElement | null) {
       observer.disconnect()
       wide.removeEventListener('change', update)
     }
-  }, [el])
+  }, [el, frozen])
   return height
 }
 

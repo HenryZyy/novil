@@ -77,6 +77,13 @@ export const useSetSeriesRead = () =>
 
 export const useCreateUser = () => useInvalidatingMutation(api.createUser)
 
+export const useUpdateUser = () =>
+  useInvalidatingMutation(({ id, ...changes }: { id: number; username?: string; role?: 'admin' | 'user' }) =>
+    api.updateUser(id, changes),
+  )
+
+export const useDeleteUserAvatar = () => useInvalidatingMutation(api.deleteUserAvatar)
+
 export const useUpdateBook = () =>
   useInvalidatingMutation(({ id, changes }: { id: number; changes: Partial<Record<MetadataField, string | null>> }) =>
     api.updateBook(id, changes),

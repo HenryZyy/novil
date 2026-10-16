@@ -1,9 +1,9 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { useRef, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router'
 import { api } from '../api/client'
 import { resetSession, useCurrentUser, useLogout } from '../api/queries'
-import { setAvatar, useAvatar } from '../avatar'
+import { takeLocalAvatar } from '../avatar'
 import { Avatar } from '../components/Avatar'
 import { CropDialog } from '../components/CropDialog'
 import { setTheme, themes, useTheme } from '../theme'
@@ -35,7 +35,7 @@ export function ProfilePage() {
           {user.role === 'admin' ? 'Admin' : 'User'} · member since{' '}
           {new Date(user.createdAt).toLocaleDateString(undefined, { dateStyle: 'long' })}
         </p>
-        <PictureButtons userId={user.id} />
+        <PictureButtons />
       </section>
 
       <section className="form">
@@ -71,11 +71,36 @@ function ThemeChoice() {
   )
 }
 
-function PictureButtons({ userId }: { userId: number }) {
-  const picture = useAvatar(userId)
+function PictureButtons() {
+  const user = useCurrentUser()
+  const queryClient = useQueryClient()
   const input = useRef<HTMLInputElement>(null)
   const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
   const [cropping, setCropping] = useState<File | null>(null)
+
+  const run = async (action: () => Promise<unknown>) => {
+    setBusy(true)
+    setError('')
+    try {
+      await action()
+      await queryClient.invalidateQueries()
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // Moves a picture set before the server stored them onto the server.
+  useEffect(() => {
+    const local = takeLocalAvatar(user.id)
+    if (local && !user.hasAvatar) {
+      run(async () => api.setMyAvatar(await (await fetch(local)).blob()))
+    }
+    // Only once, when the page opens.
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const choose = (file: File | undefined) => {
     if (!file) return
@@ -84,20 +109,22 @@ function PictureButtons({ userId }: { userId: number }) {
     else setCropping(file)
   }
 
-  const save = (dataUrl: string) => {
+  const save = (image: Blob) => {
     setCropping(null)
-    try {
-      setAvatar(userId, dataUrl)
-    } catch (err) {
-      setError((err as Error).message)
-    }
+    run(() => api.setMyAvatar(image))
   }
 
   return (
     <>
       <p className="actions">
-        <button onClick={() => input.current?.click()}>{picture ? 'Change picture' : 'Add picture'}</button>
-        {picture && <button onClick={() => setAvatar(userId, null)}>Remove</button>}
+        <button onClick={() => input.current?.click()} disabled={busy}>
+          {user.hasAvatar ? 'Change picture' : 'Add picture'}
+        </button>
+        {user.hasAvatar && (
+          <button onClick={() => run(api.deleteMyAvatar)} disabled={busy}>
+            Remove
+          </button>
+        )}
       </p>
       <input
         ref={input}
@@ -110,7 +137,6 @@ function PictureButtons({ userId }: { userId: number }) {
         }}
       />
       {error && <p className="error">{error}</p>}
-      <p className="muted">Your picture is saved in this browser only.</p>
       {cropping && <CropDialog file={cropping} onSave={save} onCancel={() => setCropping(null)} />}
     </>
   )

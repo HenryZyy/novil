@@ -1,6 +1,15 @@
 import { useState, type FormEvent } from 'react'
 import type { User } from '../../api/client'
-import { useCreateUser, useCurrentUser, useDeleteUser, useResetPassword, useUsers } from '../../api/queries'
+import {
+  useCreateUser,
+  useCurrentUser,
+  useDeleteUser,
+  useDeleteUserAvatar,
+  useResetPassword,
+  useUpdateUser,
+  useUsers,
+} from '../../api/queries'
+import { Avatar } from '../../components/Avatar'
 
 export function UsersAdmin() {
   const users = useUsers()
@@ -41,6 +50,14 @@ function UserRow({ user }: { user: User }) {
   const me = useCurrentUser()
   const remove = useDeleteUser()
   const reset = useResetPassword()
+  const update = useUpdateUser()
+  const removeAvatar = useDeleteUserAvatar()
+  const self = user.id === me.id
+
+  const rename = () => {
+    const username = prompt(`New username for ${user.username} (3 to 32 letters, digits, ".", "_" or "-"):`, user.username)
+    if (username && username !== user.username) update.mutate({ id: user.id, username })
+  }
 
   const resetPassword = () => {
     const password = prompt(
@@ -51,14 +68,42 @@ function UserRow({ user }: { user: User }) {
 
   return (
     <tr>
-      <td>{user.username}</td>
-      <td>{user.role === 'admin' ? 'Admin' : 'User'}</td>
+      <td>
+        <span className="user-cell">
+          <Avatar user={user} size={28} />
+          {user.username}
+        </span>
+      </td>
+      <td>
+        {/* Admins can't change their own role, so there's always one left. */}
+        <select
+          value={user.role}
+          disabled={self || update.isPending}
+          onChange={(e) => update.mutate({ id: user.id, role: e.target.value as User['role'] })}
+          aria-label={`Role of ${user.username}`}
+          title={self ? "You can't change your own role" : undefined}
+        >
+          <option value="user">User</option>
+          <option value="admin">Admin</option>
+        </select>
+      </td>
       <td>{new Date(user.createdAt).toLocaleDateString(undefined, { dateStyle: 'medium' })}</td>
       <td>{user.mustChangePassword ? 'Starting password' : 'Set'}</td>
       <td className="actions">
+        <button onClick={rename} disabled={update.isPending}>
+          Rename
+        </button>
         <button onClick={resetPassword} disabled={reset.isPending}>
           Reset password
         </button>
+        {user.hasAvatar && (
+          <button
+            onClick={() => confirm(`Remove ${user.username}'s profile picture?`) && removeAvatar.mutate(user.id)}
+            disabled={removeAvatar.isPending}
+          >
+            Remove picture
+          </button>
+        )}
         {user.id !== me.id && (
           <button
             onClick={() => confirm(`Delete ${user.username}? Their reading progress is deleted too.`) && remove.mutate(user.id)}
@@ -70,6 +115,8 @@ function UserRow({ user }: { user: User }) {
         {reset.isSuccess && <span className="muted">Password reset.</span>}
         {reset.isError && <span className="error">{reset.error.message}</span>}
         {remove.isError && <span className="error">{remove.error.message}</span>}
+        {update.isError && <span className="error">{update.error.message}</span>}
+        {removeAvatar.isError && <span className="error">{removeAvatar.error.message}</span>}
       </td>
     </tr>
   )

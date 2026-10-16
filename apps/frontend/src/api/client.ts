@@ -13,6 +13,8 @@ export type Series = {
   coverBookId: number | null
   readCount: number
   readingCount: number
+  // How much of the series was read, from 0 to 1.
+  progress: number
   addedAt: string
   lastReadAt: string | null
 }
@@ -33,6 +35,9 @@ export type User = {
   // New accounts and admin resets must pick their own password first.
   mustChangePassword: boolean
   createdAt: string
+  hasAvatar: boolean
+  // When the picture changed; part of its URL so a new one isn't cached away.
+  avatarUpdatedAt?: string
 }
 
 export type Stats = {
@@ -64,6 +69,8 @@ export type Book = {
   released: string
   description: string
   edited: MetadataField[]
+  // True when an admin uploaded the cover instead of the file's.
+  customCover: boolean
 }
 
 export const metadataFields = ['title', 'author', 'language', 'released', 'description'] as const
@@ -116,6 +123,11 @@ export const api = {
     request<User>('/api/users', json('POST', user)),
   resetPassword: (id: number, password: string) => request<User>(`/api/users/${id}/password`, json('PUT', { password })),
   deleteUser: (id: number) => request<void>(`/api/users/${id}`, { method: 'DELETE' }),
+  updateUser: (id: number, changes: { username?: string; role?: User['role'] }) =>
+    request<User>(`/api/users/${id}`, json('PATCH', changes)),
+  setMyAvatar: (image: Blob) => request<User>('/api/me/avatar', { method: 'PUT', body: image }),
+  deleteMyAvatar: () => request<User>('/api/me/avatar', { method: 'DELETE' }),
+  deleteUserAvatar: (id: number) => request<User>(`/api/users/${id}/avatar`, { method: 'DELETE' }),
   stats: () => request<Stats>('/api/stats'),
 
   libraries: () => request<Library[]>('/api/libraries'),
@@ -134,6 +146,8 @@ export const api = {
   continueReading: () => request<Book[]>('/api/continue'),
   books: (seriesId: number) => request<Book[]>(`/api/series/${seriesId}/books`),
   book: (id: number) => request<Book>(`/api/books/${id}`),
+  setCover: (bookId: number, image: Blob) => request<Book>(`/api/books/${bookId}/cover`, { method: 'PUT', body: image }),
+  deleteCover: (bookId: number) => request<Book>(`/api/books/${bookId}/cover`, { method: 'DELETE' }),
   // A string replaces the file's value, null goes back to it.
   updateBook: (id: number, changes: Partial<Record<MetadataField, string | null>>) =>
     request<Book>(`/api/books/${id}`, json('PATCH', changes)),
@@ -154,9 +168,10 @@ export const api = {
 
 export const isReadable = (book: Book) => book.format === 'cbz' || book.format === 'epub'
 
-// The first page of a comic, or the cover image inside an EPUB.
-export const coverUrl = (bookId: number) => `/api/books/${bookId}/cover`
-export const hasCover = (book: Book) => book.format === 'cbz' || book.format === 'epub'
+// The cover an admin uploaded, or one made from the file: the first page of
+// a comic or PDF, or the cover image inside an EPUB.
+export const coverUrl = (bookId: number, version = 0) =>
+  `/api/books/${bookId}/cover${version ? `?v=${version}` : ''}`
 
 export const pageUrl = (bookId: number, page: number) => `/api/books/${bookId}/pages/${page}`
 export const fileUrl = (bookId: number) => `/api/books/${bookId}/file`

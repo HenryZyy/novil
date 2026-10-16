@@ -1,39 +1,19 @@
-import { useSyncExternalStore } from 'react'
+// Profile pictures live on the server, so every device shows the same one.
 
-// Profile pictures are kept in this browser's localStorage until the backend
-// can store them, so they only show on the device where they were set.
+type AvatarUser = { id: number; hasAvatar?: boolean; avatarUpdatedAt?: string }
 
-const key = (userId: number) => `novil.avatar.${userId}`
-const changed = 'novil-avatar-changed'
+export const avatarUrl = (user: AvatarUser) =>
+  user.hasAvatar ? `/api/users/${user.id}/avatar?v=${encodeURIComponent(user.avatarUpdatedAt ?? '')}` : null
 
-function read(userId: number) {
+// Pictures set before the server stored them were kept in this browser.
+// Returns such a picture (as a data URL) once and forgets it.
+export function takeLocalAvatar(userId: number): string | null {
   try {
-    return localStorage.getItem(key(userId))
+    const key = `novil.avatar.${userId}`
+    const picture = localStorage.getItem(key)
+    localStorage.removeItem(key)
+    return picture
   } catch {
     return null
   }
-}
-
-function subscribe(onChange: () => void) {
-  // "storage" fires when another tab changes it, our own event for this tab.
-  window.addEventListener('storage', onChange)
-  window.addEventListener(changed, onChange)
-  return () => {
-    window.removeEventListener('storage', onChange)
-    window.removeEventListener(changed, onChange)
-  }
-}
-
-export function useAvatar(userId: number) {
-  return useSyncExternalStore(subscribe, () => read(userId))
-}
-
-export function setAvatar(userId: number, dataUrl: string | null) {
-  try {
-    if (dataUrl) localStorage.setItem(key(userId), dataUrl)
-    else localStorage.removeItem(key(userId))
-  } catch {
-    throw new Error("This browser doesn't allow saving the picture.")
-  }
-  window.dispatchEvent(new Event(changed))
 }

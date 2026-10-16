@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { Link } from 'react-router'
-import { coverUrl, hasCover, type Book, type Library } from '../api/client'
+import { coverUrl, type Book, type Library } from '../api/client'
 import { isAdmin, useContinueReading, useCurrentUser, useLibraries, useSeriesList } from '../api/queries'
 import { SeriesCard } from '../components/Cards'
 import { Cover } from '../components/Cover'
+import { Progress } from '../components/Progress'
 import { Row } from '../components/Row'
 
 // Laid out like Jellyfin's home screen: the libraries, what you're reading,
@@ -100,13 +101,8 @@ function ContinueCard({ book }: { book: Book }) {
   const detail = book.format === 'epub' ? name : `${name} · Page ${book.readPage} / ${book.pageCount}`
   return (
     <Link to={`/read/${book.id}`} className="card continue-card">
-      <Cover bookId={hasCover(book) ? book.id : null} title={book.seriesName} />
-      <div className="continue-progress" role="progressbar" aria-valuenow={percent} aria-label="Read">
-        <div className="continue-track">
-          <div style={{ width: `${Math.max(percent, 2)}%` }} />
-        </div>
-        <span>{percent}%</span>
-      </div>
+      <Cover bookId={book.id} title={book.seriesName} />
+      <Progress value={percent / 100} />
       <span className="card-title" title={book.seriesName}>
         {book.seriesName}
       </span>

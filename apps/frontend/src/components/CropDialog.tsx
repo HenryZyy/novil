@@ -13,7 +13,7 @@ export function CropDialog({
   onCancel,
 }: {
   file: File
-  onSave: (dataUrl: string) => void
+  onSave: (image: Blob) => void
   onCancel: () => void
 }) {
   const dialog = useRef<HTMLDialogElement>(null)
@@ -106,7 +106,8 @@ export function CropDialog({
     const canvas = document.createElement('canvas')
     canvas.width = canvas.height = outputSize
     canvas.getContext('2d')!.drawImage(image, sx, sy, side, side, 0, 0, outputSize, outputSize)
-    onSave(canvas.toDataURL('image/webp', 0.85))
+    // PNG keeps it sharp; the server turns it into its own small JPEG.
+    canvas.toBlob((blob) => blob && onSave(blob), 'image/png')
   }
 
   const k = base * crop.zoom

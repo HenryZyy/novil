@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { metadataFields, type Book, type MetadataField } from '../api/client'
+import { useQueryClient } from '@tanstack/react-query'
+import { api, metadataFields, type Book, type MetadataField } from '../api/client'
+import { bumpCover } from '../coverVersion'
+import { Cover } from './Cover'
 import { useUpdateBook } from '../api/queries'
 
 const labels: Record<MetadataField, string> = {
@@ -43,6 +46,7 @@ export function EditBookDialog({ book, onClose }: { book: Book; onClose: () => v
       <form onSubmit={submit} className="form">
         <h2 id="edit-book-title">Edit details</h2>
         <p className="muted">{book.title}</p>
+        <CoverField book={book} />
         {metadataFields.map((field) => {
           const edited = book.edited.includes(field) && !reset.includes(field)
           const id = `book-${field}`
@@ -92,5 +96,63 @@ export function EditBookDialog({ book, onClose }: { book: Book; onClose: () => v
         </p>
       </form>
     </dialog>
+  )
+}
+
+// Changing the cover takes effect right away, separately from Save.
+function CoverField({ book }: { book: Book }) {
+  const queryClient = useQueryClient()
+  const input = useRef<HTMLInputElement>(null)
+  const [custom, setCustom] = useState(book.customCover)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  const run = async (action: () => Promise<Book>) => {
+    setBusy(true)
+    setError('')
+    try {
+      const updated = await action()
+      setCustom(updated.customCover)
+      bumpCover(book.id)
+      await queryClient.invalidateQueries()
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="field cover-field">
+      <span className="field-label">Cover</span>
+      <div className="cover-field-row">
+        <div className="cover-field-preview">
+          <Cover bookId={book.id} title={book.title} />
+        </div>
+        <div className="cover-field-actions">
+          <button type="button" onClick={() => input.current?.click()} disabled={busy}>
+            {busy ? 'Saving…' : 'Upload cover'}
+          </button>
+          {custom && (
+            <button type="button" className="link-button" onClick={() => run(() => api.deleteCover(book.id))} disabled={busy}>
+              Use the cover from the file
+            </button>
+          )}
+          <span className="muted">JPEG, PNG, GIF or WebP.</span>
+          {error && <span className="error">{error}</span>}
+        </div>
+      </div>
+      <input
+        ref={input}
+        type="file"
+        accept="image/jpeg,image/png,image/gif,image/webp"
+        hidden
+        onChange={(e) => {
+          const file = e.target.files?.[0]
+          e.target.value = ''
+          if (file) run(() => api.setCover(book.id, file))
+        }}
+      />
+    </div>
   )
 }
