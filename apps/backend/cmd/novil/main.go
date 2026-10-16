@@ -17,6 +17,7 @@ import (
 	"novil/backend/internal/api"
 	"novil/backend/internal/auth"
 	"novil/backend/internal/config"
+	"novil/backend/internal/cover"
 	"novil/backend/internal/db"
 	"novil/backend/internal/store"
 )
@@ -58,7 +59,10 @@ func run() error {
 		return fmt.Errorf("NOVIL_TRUSTED_PROXIES: %w", err)
 	}
 
+	covers := cover.NewGenerator()
+	defer covers.Close()
 	handler := api.New(st, auth.NewTokens(secret, tokenTTL), api.Options{
+		Covers:         covers,
 		WebDir:         cfg.WebDir,
 		MaxUploadBytes: cfg.MaxUploadBytes,
 		CORSOrigins:    cfg.CORSOrigins,

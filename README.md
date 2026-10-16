@@ -75,6 +75,7 @@ a `code` to check instead of the message:
 | `PUT /api/me/password` | logged in¹ | Change your own password |
 | `GET /api/users` | admin | List users |
 | `POST /api/users` | admin | `{"username", "password", "role"}` creates a user (`role`: `user` (default) or `admin`). They must change the password after logging in |
+| `PATCH /api/users/{id}` | admin | `{"username"}` renames a user, `{"role": "admin"}` or `"user"` changes their role (not your own). Either or both; applies on the user's next request |
 | `PUT /api/users/{id}/password` | admin | `{"password"}` resets a password and logs the user out |
 | `DELETE /api/users/{id}` | admin | Delete a user and their progress (not yourself) |
 | `GET /api/libraries` | user | List libraries |
@@ -87,6 +88,9 @@ a `code` to check instead of the message:
 | `GET /api/series/{id}/books` | user | The books in a series |
 | `GET /api/books/{id}` | user | One book |
 | `PATCH /api/books/{id}` | admin | Edit metadata, see below |
+| `GET /api/books/{id}/cover` | user | The cover as a JPEG, see below |
+| `PUT /api/books/{id}/cover` | admin | Upload a cover image |
+| `DELETE /api/books/{id}/cover` | admin | Go back to the automatic cover |
 | `GET /api/books/{id}/file` | user | Download the book file |
 | `GET /api/books/{id}/pages/{n}` | user | Page `n` (from 1) of a CBZ as an image |
 | `GET /api/books/{id}/progress` | user | Your progress: `{"bookId", "page", "completed", "updatedAt"}` |
@@ -117,6 +121,24 @@ admin set:
 ```json
 {"title": "Dune (Deutsch)", "language": "de", "released": null}
 ```
+
+### Covers
+
+`GET /api/books/{id}/cover` returns a JPEG of at most 800×1200 for every
+format: the first page of a CBZ or PDF, the cover image of an EPUB (or the
+first image on its first pages), or one an admin uploaded instead. `404` means
+the book has none, so show a placeholder. A series' `coverBookId` names the
+book whose cover stands for it.
+
+Covers are made once and kept until the file changes. Send them with
+`If-None-Match` (browsers do this on their own) to get a cheap `304` while
+unchanged. The first PDF cover after a start takes a few seconds; `503` with
+`Retry-After` means try again shortly.
+
+Admins replace a cover with `PUT /api/books/{id}/cover` (the image file as
+the body: JPEG, PNG, GIF or WebP, up to 20 MB) and go back to the automatic one
+with `DELETE /api/books/{id}/cover`. Both return the book; `customCover` says
+whether an uploaded cover is in use.
 
 Thanks to the cookie, `<img src="/api/books/1/pages/1">` and download links
 work in the browser as they are. Other clients send the header.

@@ -90,6 +90,19 @@ func (s *Store) SetPassword(id int64, passwordHash string, mustChange bool) (Use
 	return u, notFound(err)
 }
 
+// UpdateUser renames a user or changes their role. A nil value stays as it
+// is. Tokens stay valid: requests load the user fresh, so the change applies
+// to the next request.
+func (s *Store) UpdateUser(id int64, username, role *string) (User, error) {
+	u, err := scanUser(s.db.QueryRow(`
+		UPDATE users SET username = COALESCE(?, username), role = COALESCE(?, role)
+		WHERE id = ? RETURNING `+userColumns, username, role, id))
+	if err != nil && strings.Contains(err.Error(), "UNIQUE") {
+		return User{}, ErrUsernameTaken
+	}
+	return u, notFound(err)
+}
+
 // DeleteUser also deletes the user's reading progress.
 func (s *Store) DeleteUser(id int64) error {
 	res, err := s.db.Exec(`DELETE FROM users WHERE id = ?`, id)
