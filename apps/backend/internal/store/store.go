@@ -24,15 +24,17 @@ type Library struct {
 }
 
 type Series struct {
-	ID           int64   `json:"id"`
-	LibraryID    int64   `json:"libraryId"`
-	Name         string  `json:"name"`
-	BookCount    int     `json:"bookCount"`
-	CoverBookID  *int64  `json:"coverBookId"`
-	ReadCount    int     `json:"readCount"`
-	ReadingCount int     `json:"readingCount"`
-	AddedAt      string  `json:"addedAt"`
-	LastReadAt   *string `json:"lastReadAt"`
+	ID           int64  `json:"id"`
+	LibraryID    int64  `json:"libraryId"`
+	Name         string `json:"name"`
+	BookCount    int    `json:"bookCount"`
+	CoverBookID  *int64 `json:"coverBookId"`
+	ReadCount    int    `json:"readCount"`
+	ReadingCount int    `json:"readingCount"`
+	// Progress is how much of the series was read, from 0 to 1.
+	Progress   float64 `json:"progress"`
+	AddedAt    string  `json:"addedAt"`
+	LastReadAt *string `json:"lastReadAt"`
 }
 
 type Book struct {
@@ -135,6 +137,13 @@ const seriesSelect = `
 		(SELECT id FROM books WHERE series_id = s.id ORDER BY sort_order LIMIT 1),
 		COUNT(CASE WHEN p.completed THEN 1 END),
 		COUNT(CASE WHEN p.page > 0 AND NOT p.completed THEN 1 END),
+		-- How much of the series was read: each book's share, a page out of
+		-- its pages, or for EPUBs (no pages) the percentage they store.
+		COALESCE(SUM(CASE
+			WHEN p.completed THEN 1.0
+			WHEN b.page_count > 0 THEN MIN(COALESCE(p.page, 0) * 1.0 / b.page_count, 1.0)
+			ELSE MIN(COALESCE(p.page, 0) / 100.0, 1.0)
+		END) / COUNT(b.id), 0),
 		COALESCE(MAX(b.created_at), ''), MAX(p.updated_at)
 	FROM series s
 	LEFT JOIN books b ON b.series_id = s.id
@@ -144,7 +153,7 @@ const seriesSelect = `
 func scanSeries(row interface{ Scan(...any) error }) (Series, error) {
 	var sr Series
 	err := row.Scan(&sr.ID, &sr.LibraryID, &sr.Name, &sr.BookCount, &sr.CoverBookID,
-		&sr.ReadCount, &sr.ReadingCount, &sr.AddedAt, &sr.LastReadAt)
+		&sr.ReadCount, &sr.ReadingCount, &sr.Progress, &sr.AddedAt, &sr.LastReadAt)
 	return sr, err
 }
 

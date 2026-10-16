@@ -104,7 +104,12 @@ func TestSeriesQueries(t *testing.T) {
 		t.Errorf("continue reading %+v", continueReading)
 	}
 
+	// Berserk: book 2 (2 pages) at page 1, book 3 unread: a quarter read.
 	var berserk store.Series
+	c.do("GET", "/api/series/2", "", http.StatusOK, &berserk)
+	if berserk.Progress != 0.25 {
+		t.Errorf("berserk progress %v, want 0.25", berserk.Progress)
+	}
 	c.do("PUT", "/api/series/2/read", `{"read":true}`, http.StatusOK, &berserk)
 	if berserk.ReadCount != 2 {
 		t.Errorf("berserk after marking read %+v", berserk)
@@ -144,6 +149,12 @@ func TestEPUBProgress(t *testing.T) {
 
 	c.do("PUT", "/api/books/1/progress", `{"page":101}`, http.StatusBadRequest, nil)
 	c.do("PUT", "/api/books/1/progress", `{"page":42,"position":"epubcfi(/6/14!/4/2/1:0)"}`, http.StatusOK, nil)
+
+	var series store.Series
+	c.do("GET", "/api/series/1", "", http.StatusOK, &series)
+	if series.Progress < 0.419 || series.Progress > 0.421 {
+		t.Errorf("series progress %v, want 0.42", series.Progress)
+	}
 
 	var book store.Book
 	c.do("GET", "/api/books/1", "", http.StatusOK, &book)
