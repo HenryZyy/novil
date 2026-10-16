@@ -4,5 +4,5 @@
 apps/backend/data/
 apps/backend/novil
 
-config/
-library/
+/config/
+/library/
