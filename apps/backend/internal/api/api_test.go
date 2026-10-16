@@ -50,14 +50,25 @@ func do(t *testing.T, srv *httptest.Server, method, path, body string, wantStatu
 	}
 }
 
+// libraryJSON builds a create-library request body. The path must be
+// JSON-encoded because Windows paths contain backslashes.
+func libraryJSON(t *testing.T, name, path string) string {
+	t.Helper()
+	b, err := json.Marshal(map[string]string{"name": name, "path": path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
 func TestLibraryFlow(t *testing.T) {
 	srv := newTestServer(t)
 	root := t.TempDir()
 	testutil.WriteCBZ(t, filepath.Join(root, "Solo Leveling", "Chapter 1.cbz"), "002.jpg", "001.jpg")
 
 	var lib store.Library
-	do(t, srv, "POST", "/api/libraries", `{"name":"Manhwa","path":"`+root+`"}`, http.StatusCreated, &lib)
-	do(t, srv, "POST", "/api/libraries", `{"name":"Dup","path":"`+root+`"}`, http.StatusConflict, nil)
+	do(t, srv, "POST", "/api/libraries", libraryJSON(t, "Manhwa", root), http.StatusCreated, &lib)
+	do(t, srv, "POST", "/api/libraries", libraryJSON(t, "Dup", root), http.StatusConflict, nil)
 
 	var result store.ScanResult
 	do(t, srv, "POST", "/api/libraries/1/scan", "", http.StatusOK, &result)
@@ -119,7 +130,7 @@ func TestDownloadNonASCIIFilename(t *testing.T) {
 	srv := newTestServer(t)
 	root := t.TempDir()
 	testutil.WriteCBZ(t, filepath.Join(root, "ワンピース", "第1巻.cbz"), "01.jpg")
-	do(t, srv, "POST", "/api/libraries", `{"name":"Manga","path":"`+root+`"}`, http.StatusCreated, nil)
+	do(t, srv, "POST", "/api/libraries", libraryJSON(t, "Manga", root), http.StatusCreated, nil)
 	do(t, srv, "POST", "/api/libraries/1/scan", "", http.StatusOK, nil)
 
 	resp, err := http.Get(srv.URL + "/api/books/1/file")

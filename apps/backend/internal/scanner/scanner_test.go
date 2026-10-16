@@ -3,6 +3,7 @@ package scanner
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"novil/backend/internal/testutil"
@@ -48,6 +49,9 @@ func TestScan(t *testing.T) {
 }
 
 func TestScanSkipsUnreadableFolder(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("chmod can't make a folder unreadable on Windows")
+	}
 	if os.Getuid() == 0 {
 		t.Skip("root can read every folder")
 	}

@@ -1,0 +1,2 @@
+# Keep LF line endings everywhere so files match on Linux (Docker) and gofmt is happy on Windows.
+* text=auto eol=lf
