@@ -14,6 +14,7 @@ type Settings = {
   theme: 'auto' | 'light' | 'sepia' | 'dark'
   font: FontName
   fontSize: number
+  header: boolean
 }
 
 // Light and dark match the site's own colours.
@@ -25,7 +26,7 @@ const themes = {
 const themeChoices: Settings['theme'][] = ['auto', 'light', 'sepia', 'dark']
 
 const resolve = (theme: Settings['theme'], dark: boolean) => (theme === 'auto' ? (dark ? 'dark' : 'light') : theme)
-const defaults: Settings = { flow: 'paginated', theme: 'auto', font: 'publisher', fontSize: 100 }
+const defaults: Settings = { flow: 'paginated', theme: 'auto', font: 'publisher', fontSize: 100, header: true }
 const storageKey = 'novil.epubReader'
 
 function load(): Settings {
@@ -36,6 +37,7 @@ function load(): Settings {
       theme: themeChoices.includes(saved.theme) ? saved.theme : defaults.theme,
       font: Object.hasOwn(fonts, saved.font) ? saved.font : defaults.font,
       fontSize: typeof saved.fontSize === 'number' ? Math.min(Math.max(saved.fontSize, 60), 250) : defaults.fontSize,
+      header: saved.header !== false,
     }
   } catch {
     // Blocked storage or broken JSON: start from the defaults.
@@ -176,20 +178,34 @@ export function EpubReader({ book }: { book: Book }) {
   const cycle = <T,>(list: T[], current: T) => list[(list.indexOf(current) + 1) % list.length]
 
   return (
-    <div className="reader epub-reader" style={{ background: colors.bg, color: colors.fg }}>
-      <header className="reader-bar" style={{ background: colors.bg, color: colors.fg }}>
-        <Link to={`/series/${book.seriesId}`} className="reader-icon" aria-label="Back to series" title="Back to series">
-          <Icon name="back" />
-        </Link>
-        <span className="reader-title">
-          <strong>{book.title}</strong>
-          {location?.tocItem?.label && <span>{location.tocItem.label}</span>}
-        </span>
-        <span className="reader-count">{percent}%</span>
-        <button className="reader-icon" onClick={() => setMenuOpen((o) => !o)} aria-label="Menu" aria-expanded={menuOpen}>
+    <div
+      className={`reader epub-reader${settings.header ? '' : ' reader-no-header'}`}
+      style={{ background: colors.bg, color: colors.fg }}
+    >
+      {settings.header ? (
+        <header className="reader-bar" style={{ background: colors.bg, color: colors.fg }}>
+          <Link to={`/series/${book.seriesId}`} className="reader-icon" aria-label="Back to series" title="Back to series">
+            <Icon name="back" />
+          </Link>
+          <span className="reader-title">
+            <strong>{book.title}</strong>
+            {location?.tocItem?.label && <span>{location.tocItem.label}</span>}
+          </span>
+          <span className="reader-count">{percent}%</span>
+          <button className="reader-icon" onClick={() => setMenuOpen((o) => !o)} aria-label="Menu" aria-expanded={menuOpen}>
+            <Icon name="menu" />
+          </button>
+        </header>
+      ) : (
+        <button
+          className="reader-icon reader-menu-button"
+          style={{ background: colors.bg, color: colors.fg }}
+          onClick={() => setMenuOpen(true)}
+          aria-label="Menu"
+        >
           <Icon name="menu" />
         </button>
-      </header>
+      )}
 
       {error ? <p className="page error">{error}</p> : <div ref={container} className="epub-view" />}
 
@@ -294,6 +310,12 @@ export function EpubReader({ book }: { book: Book }) {
 
             <MenuSection title="Display">
               <ThemeRow />
+              <SettingRow
+                icon="header"
+                label="Header"
+                value={settings.header ? 'Shown' : 'Hidden'}
+                onClick={() => update({ header: !settings.header })}
+              />
               <SettingRow
                 icon="palette"
                 label="Book colours"
