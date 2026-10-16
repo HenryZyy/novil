@@ -1,9 +1,9 @@
 services:
-  backend:
+  novil:
     build:
       context: .
-      dockerfile: deployment/Dockerfile.backend
-    container_name: novil-backend
+      dockerfile: deployment/Dockerfile
+    container_name: novil
     restart: unless-stopped
     user: "${NOVIL_UID:-1000}:${NOVIL_GID:-1000}"
     ports:

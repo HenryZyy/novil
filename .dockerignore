@@ -8,3 +8,5 @@ config
 library
 apps/backend/data
 apps/backend/novil
+**/node_modules
+**/dist

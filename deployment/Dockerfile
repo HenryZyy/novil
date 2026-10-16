@@ -1,6 +1,18 @@
 # syntax=docker/dockerfile:1
 
-FROM golang:1.27-alpine AS build
+FROM node:24-alpine AS frontend
+
+WORKDIR /app
+
+RUN corepack enable
+
+COPY apps/frontend/package.json apps/frontend/pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
+
+COPY apps/frontend ./
+RUN pnpm build
+
+FROM golang:1.27-alpine AS backend
 
 WORKDIR /src
 
@@ -14,11 +26,12 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/novil ./cmd/novil 
 FROM gcr.io/distroless/static-debian12:nonroot AS runtime
 
 ENV NOVIL_ADDR=:8080 \
-    NOVIL_DATA_DIR=/config
+    NOVIL_DATA_DIR=/config \
+    NOVIL_WEB_DIR=/web
 
-COPY --from=build /out/novil /novil
-# Lets the default nonroot user write to /config when it is a named volume.
-COPY --from=build --chown=65532:65532 /out/config /config
+COPY --from=backend /out/novil /novil
+COPY --from=frontend /app/dist /web
+COPY --from=backend --chown=65532:65532 /out/config /config
 
 VOLUME ["/config"]
 EXPOSE 8080
