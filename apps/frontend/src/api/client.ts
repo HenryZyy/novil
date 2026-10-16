@@ -27,14 +27,10 @@ export type SeriesQuery = {
 export type User = {
   id: number
   username: string
-  isAdmin: boolean
+  role: 'admin' | 'user'
+  // New accounts and admin resets must pick their own password first.
+  mustChangePassword: boolean
   createdAt: string
-  lastLoginAt: string | null
-}
-
-export type AuthStatus = {
-  setupRequired: boolean
-  user: User | null
 }
 
 export type Stats = {
@@ -66,10 +62,13 @@ export type ScanResult = {
 
 export class ApiError extends Error {
   status: number
+  // Machine-readable, e.g. "password_change_required".
+  code?: string
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, code?: string) {
     super(message)
     this.status = status
+    this.code = code
   }
 }
 
@@ -81,7 +80,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (res.status === 204) return undefined as T
   const body = await res.json().catch(() => null)
   if (!res.ok) {
-    throw new ApiError(res.status, body?.error ?? res.statusText)
+    throw new ApiError(res.status, body?.error ?? res.statusText, body?.code)
   }
   return body as T
 }
@@ -89,14 +88,19 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 const json = (method: string, body: unknown): RequestInit => ({ method, body: JSON.stringify(body) })
 
 export const api = {
-  authStatus: () => request<AuthStatus>('/api/auth/status'),
-  setup: (username: string, password: string) => request<User>('/api/auth/setup', json('POST', { username, password })),
-  login: (username: string, password: string) => request<User>('/api/auth/login', json('POST', { username, password })),
+  // The server also sets the token as a cookie, which is all the browser
+  // needs, so the token in the response isn't kept.
+  me: () => request<User>('/api/me'),
+  login: (username: string, password: string) =>
+    request<{ user: User }>('/api/auth/login', json('POST', { username, password })),
+  changePassword: (currentPassword: string, newPassword: string) =>
+    request<{ user: User }>('/api/me/password', json('PUT', { currentPassword, newPassword })),
   logout: () => request<void>('/api/auth/logout', { method: 'POST' }),
 
   users: () => request<User[]>('/api/users'),
-  createUser: (user: { username: string; password: string; isAdmin: boolean }) =>
+  createUser: (user: { username: string; password: string; role: User['role'] }) =>
     request<User>('/api/users', json('POST', user)),
+  resetPassword: (id: number, password: string) => request<User>(`/api/users/${id}/password`, json('PUT', { password })),
   deleteUser: (id: number) => request<void>(`/api/users/${id}`, { method: 'DELETE' }),
   stats: () => request<Stats>('/api/stats'),
 

@@ -1,6 +1,7 @@
 import { createBrowserRouter } from 'react-router'
 import { RequireAuth } from './components/RequireAuth'
-import { Layout } from './Layout'
+import { Layout, LayoutUnlessPending } from './Layout'
+import { AccountPage } from './pages/AccountPage'
 import { AdminLayout } from './pages/admin/AdminLayout'
 import { LibrariesAdmin } from './pages/admin/LibrariesAdmin'
 import { Overview } from './pages/admin/Overview'
@@ -14,7 +15,10 @@ import { ReaderPage } from './reader/ReaderPage'
 
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
-  { path: '/setup', element: <LoginPage setup /> },
+  {
+    element: <RequireAuth allowPendingPassword />,
+    children: [{ element: <LayoutUnlessPending />, children: [{ path: '/account', element: <AccountPage /> }] }],
+  },
   {
     element: <RequireAuth />,
     children: [

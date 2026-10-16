@@ -1,5 +1,5 @@
 import { Link, useParams } from 'react-router'
-import { useBooks, useCurrentUser, useLibraries, useSeries, useSetSeriesRead } from '../api/queries'
+import { isAdmin, useBooks, useCurrentUser, useLibraries, useSeries, useSetSeriesRead } from '../api/queries'
 import { isReadable } from '../api/client'
 import { BookCard } from '../components/Cards'
 import { plural } from '../format'
@@ -20,7 +20,7 @@ export function SeriesPage() {
   const s = series.data
   const next = books.data.find((b) => isReadable(b) && !b.completed)
   const allRead = s.bookCount > 0 && s.readCount === s.bookCount
-  const canUpload = user.isAdmin && libraries.data?.some((l) => l.id === s.libraryId && l.allowUploads)
+  const canUpload = isAdmin(user) && libraries.data?.some((l) => l.id === s.libraryId && l.allowUploads)
 
   return (
     <>

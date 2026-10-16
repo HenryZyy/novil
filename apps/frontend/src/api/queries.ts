@@ -1,18 +1,32 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
-import { api, type SeriesQuery } from './client'
+import { api, ApiError, type SeriesQuery } from './client'
 
-export const useAuthStatus = () => useQuery({ queryKey: ['auth'], queryFn: api.authStatus })
+// The logged-in user, or null when nobody is.
+export const useMe = () =>
+  useQuery({
+    queryKey: ['me'],
+    queryFn: async () => {
+      try {
+        return await api.me()
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 401) return null
+        throw err
+      }
+    },
+  })
 
 export function useCurrentUser() {
-  const user = useAuthStatus().data?.user
+  const user = useMe().data
   if (!user) throw new Error('useCurrentUser is only available on pages that require login')
   return user
 }
 
+export const isAdmin = (user: { role: string }) => user.role === 'admin'
+
 // Drops everything cached for the previous user and reloads who is logged in.
 export async function resetSession(queryClient: QueryClient) {
-  queryClient.removeQueries({ predicate: (q) => q.queryKey[0] !== 'auth' })
-  await queryClient.refetchQueries({ queryKey: ['auth'] })
+  queryClient.removeQueries({ predicate: (q) => q.queryKey[0] !== 'me' })
+  await queryClient.refetchQueries({ queryKey: ['me'] })
 }
 
 export function useLogout() {
@@ -62,5 +76,8 @@ export const useSetSeriesRead = () =>
   useInvalidatingMutation(({ id, read }: { id: number; read: boolean }) => api.setSeriesRead(id, read))
 
 export const useCreateUser = () => useInvalidatingMutation(api.createUser)
+
+export const useResetPassword = () =>
+  useInvalidatingMutation(({ id, password }: { id: number; password: string }) => api.resetPassword(id, password))
 
 export const useDeleteUser = () => useInvalidatingMutation(api.deleteUser)

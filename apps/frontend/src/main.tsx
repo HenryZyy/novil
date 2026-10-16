@@ -6,11 +6,12 @@ import { ApiError } from './api/client'
 import './index.css'
 import { router } from './router'
 
-// A 401 means the session ended, so re-check it and let the router send
-// the user to the login page.
+// A 401 means the session ended, and password_change_required that an
+// admin reset the password. Re-checking who is logged in lets the router
+// send the user to the right page.
 const onError = (error: Error) => {
-  if (error instanceof ApiError && error.status === 401) {
-    queryClient.invalidateQueries({ queryKey: ['auth'] })
+  if (error instanceof ApiError && (error.status === 401 || error.code === 'password_change_required')) {
+    queryClient.invalidateQueries({ queryKey: ['me'] })
   }
 }
 

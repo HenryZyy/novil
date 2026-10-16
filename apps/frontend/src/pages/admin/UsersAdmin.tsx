@@ -1,10 +1,9 @@
 import { useState, type FormEvent } from 'react'
-import { useCreateUser, useCurrentUser, useDeleteUser, useUsers } from '../../api/queries'
+import type { User } from '../../api/client'
+import { useCreateUser, useCurrentUser, useDeleteUser, useResetPassword, useUsers } from '../../api/queries'
 
 export function UsersAdmin() {
   const users = useUsers()
-  const me = useCurrentUser()
-  const remove = useDeleteUser()
 
   return (
     <>
@@ -21,36 +20,58 @@ export function UsersAdmin() {
                 <th>Username</th>
                 <th>Role</th>
                 <th>Created</th>
-                <th>Last login</th>
+                <th>Password</th>
                 <th />
               </tr>
             </thead>
             <tbody>
               {users.data.map((u) => (
-                <tr key={u.id}>
-                  <td>{u.username}</td>
-                  <td>{u.isAdmin ? 'Admin' : 'User'}</td>
-                  <td>{formatDate(u.createdAt)}</td>
-                  <td>{u.lastLoginAt ? formatDate(u.lastLoginAt) : 'Never'}</td>
-                  <td>
-                    {u.id !== me.id && (
-                      <button
-                        onClick={() => confirm(`Delete ${u.username}? Their reading progress is deleted too.`) && remove.mutate(u.id)}
-                        disabled={remove.isPending}
-                      >
-                        Delete
-                      </button>
-                    )}
-                  </td>
-                </tr>
+                <UserRow key={u.id} user={u} />
               ))}
             </tbody>
           </table>
         </div>
       )}
-      {remove.isError && <p className="error">{remove.error.message}</p>}
       <AddUserForm />
     </>
+  )
+}
+
+function UserRow({ user }: { user: User }) {
+  const me = useCurrentUser()
+  const remove = useDeleteUser()
+  const reset = useResetPassword()
+
+  const resetPassword = () => {
+    const password = prompt(
+      `New starting password for ${user.username} (at least 8 characters). They'll have to change it after logging in.`,
+    )
+    if (password) reset.mutate({ id: user.id, password })
+  }
+
+  return (
+    <tr>
+      <td>{user.username}</td>
+      <td>{user.role === 'admin' ? 'Admin' : 'User'}</td>
+      <td>{new Date(user.createdAt).toLocaleDateString(undefined, { dateStyle: 'medium' })}</td>
+      <td>{user.mustChangePassword ? 'Starting password' : 'Set'}</td>
+      <td className="actions">
+        <button onClick={resetPassword} disabled={reset.isPending}>
+          Reset password
+        </button>
+        {user.id !== me.id && (
+          <button
+            onClick={() => confirm(`Delete ${user.username}? Their reading progress is deleted too.`) && remove.mutate(user.id)}
+            disabled={remove.isPending}
+          >
+            Delete
+          </button>
+        )}
+        {reset.isSuccess && <span className="muted">Password reset.</span>}
+        {reset.isError && <span className="error">{reset.error.message}</span>}
+        {remove.isError && <span className="error">{remove.error.message}</span>}
+      </td>
+    </tr>
   )
 }
 
@@ -58,17 +79,17 @@ function AddUserForm() {
   const create = useCreateUser()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
-  const [isAdmin, setIsAdmin] = useState(false)
+  const [admin, setAdmin] = useState(false)
 
   const submit = (e: FormEvent) => {
     e.preventDefault()
     create.mutate(
-      { username, password, isAdmin },
+      { username, password, role: admin ? 'admin' : 'user' },
       {
         onSuccess: () => {
           setUsername('')
           setPassword('')
-          setIsAdmin(false)
+          setAdmin(false)
         },
       },
     )
@@ -79,10 +100,17 @@ function AddUserForm() {
       <h2>Add a user</h2>
       <label>
         Username
-        <input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="off" required />
+        <input
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          autoComplete="off"
+          pattern="[a-zA-Z0-9._\-]{3,32}"
+          required
+        />
+        <small className="muted">3 to 32 letters, digits, ".", "_" or "-".</small>
       </label>
       <label>
-        Password
+        Starting password
         <input
           type="password"
           value={password}
@@ -91,9 +119,10 @@ function AddUserForm() {
           minLength={8}
           required
         />
+        <small className="muted">They'll pick their own password after logging in.</small>
       </label>
       <label className="checkbox">
-        <input type="checkbox" checked={isAdmin} onChange={(e) => setIsAdmin(e.target.checked)} /> Admin (can manage
+        <input type="checkbox" checked={admin} onChange={(e) => setAdmin(e.target.checked)} /> Admin (can manage
         libraries, uploads and users)
       </label>
       {create.isError && <p className="error">{create.error.message}</p>}
@@ -103,8 +132,4 @@ function AddUserForm() {
       </button>
     </form>
   )
-}
-
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 }

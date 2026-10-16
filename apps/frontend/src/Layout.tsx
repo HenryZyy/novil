@@ -1,5 +1,5 @@
 import { NavLink, Outlet } from 'react-router'
-import { useCurrentUser, useLogout } from './api/queries'
+import { isAdmin, useCurrentUser, useLogout } from './api/queries'
 
 export function Layout() {
   const user = useCurrentUser()
@@ -17,11 +17,11 @@ export function Layout() {
             Home
           </NavLink>
           <NavLink to="/library">Library</NavLink>
-          {user.isAdmin && <NavLink to="/upload">Upload</NavLink>}
-          {user.isAdmin && <NavLink to="/admin">Dashboard</NavLink>}
+          {isAdmin(user) && <NavLink to="/upload">Upload</NavLink>}
+          {isAdmin(user) && <NavLink to="/admin">Dashboard</NavLink>}
         </nav>
         <span className="user">
-          {user.username}
+          <NavLink to="/account">{user.username}</NavLink>
           <button onClick={() => logout.mutate()} disabled={logout.isPending}>
             Log out
           </button>
@@ -32,4 +32,10 @@ export function Layout() {
       </main>
     </>
   )
+}
+
+// Users who must change their password get that page on its own, without
+// the rest of the app.
+export function LayoutUnlessPending() {
+  return useCurrentUser().mustChangePassword ? <Outlet /> : <Layout />
 }
