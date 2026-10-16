@@ -18,6 +18,8 @@ type Settings = {
   theme: 'auto' | 'light' | 'sepia' | 'dark'
   font: FontName
   fontSize: number
+  // Line height, as a multiple of the font size.
+  lineHeight: number
   header: boolean
 }
 
@@ -30,7 +32,7 @@ const themes = {
 const themeChoices: Settings['theme'][] = ['auto', 'light', 'sepia', 'dark']
 
 const resolve = (theme: Settings['theme'], dark: boolean) => (theme === 'auto' ? (dark ? 'dark' : 'light') : theme)
-const defaults: Settings = { flow: 'paginated', theme: 'auto', font: 'publisher', fontSize: 100, header: true }
+const defaults: Settings = { flow: 'paginated', theme: 'auto', font: 'publisher', fontSize: 100, lineHeight: 1.6, header: true }
 const storageKey = 'novil.epubReader'
 
 function load(): Settings {
@@ -41,6 +43,7 @@ function load(): Settings {
       theme: themeChoices.includes(saved.theme) ? saved.theme : defaults.theme,
       font: Object.hasOwn(fonts, saved.font) ? saved.font : defaults.font,
       fontSize: typeof saved.fontSize === 'number' ? Math.min(Math.max(saved.fontSize, 60), 250) : defaults.fontSize,
+      lineHeight: typeof saved.lineHeight === 'number' ? Math.min(Math.max(saved.lineHeight, 1), 2.4) : defaults.lineHeight,
       header: saved.header !== false,
     }
   } catch {
@@ -49,7 +52,7 @@ function load(): Settings {
   }
 }
 
-function styles({ theme, font, fontSize }: Settings, dark: boolean) {
+function styles({ theme, font, fontSize, lineHeight }: Settings, dark: boolean) {
   const resolved = resolve(theme, dark)
   const { bg, fg } = themes[resolved]
   const family = fonts[font].family
@@ -60,9 +63,20 @@ function styles({ theme, font, fontSize }: Settings, dark: boolean) {
     html { font-size: ${fontSize}% !important; }
     body * { color: inherit !important; }
     a { text-decoration: underline; }
-    p, li, blockquote { line-height: 1.6; }
+    /* Pictures sized to a box keep their shape inside it. */
+    img { object-fit: contain; }
+    body, body :is(p, li, blockquote, div, dd, dt, td, span) { line-height: ${lineHeight} !important; }
     ${family ? `body, body * { font-family: ${family} !important; }` : ''}
   `
+}
+
+// Calibre and others draw covers as an SVG that stretches the picture to
+// the page (preserveAspectRatio="none"); fitted instead, it keeps its
+// shape.
+function keepProportions(doc: Document) {
+  for (const svg of doc.querySelectorAll('svg[preserveAspectRatio^="none"]')) {
+    svg.setAttribute('preserveAspectRatio', 'xMidYMid meet')
+  }
 }
 
 function flatten(items: TocItem[] | null | undefined, depth = 0): { label: string; href: string; depth: number }[] {
@@ -133,7 +147,11 @@ export function EpubReader({ book }: { book: Book }) {
       container.current.append(view)
       view.addEventListener('relocate', (e) => setLocation((e as CustomEvent<Location>).detail))
       // Keys pressed while the book has focus happen inside its iframe.
-      view.addEventListener('load', (e) => (e as CustomEvent<{ doc: Document }>).detail.doc.addEventListener('keydown', onKey))
+      view.addEventListener('load', (e) => {
+        const { doc } = (e as CustomEvent<{ doc: Document }>).detail
+        doc.addEventListener('keydown', onKey)
+        keepProportions(doc)
+      })
       try {
         await view.open(fileUrl(book.id))
         opened = true
@@ -334,6 +352,29 @@ export function EpubReader({ book }: { book: Book }) {
                     className="reader-icon"
                     onClick={() => update({ fontSize: Math.min(settings.fontSize + 10, 250) })}
                     aria-label="Larger text"
+                  >
+                    <Icon name="plus" size={16} />
+                  </button>
+                </span>
+              </div>
+              <div className="setting-row">
+                <Icon name="lineHeight" />
+                <span>Line spacing</span>
+                <span className="size-controls">
+                  <button
+                    className="reader-icon"
+                    onClick={() => update({ lineHeight: Math.max(Math.round((settings.lineHeight - 0.1) * 10) / 10, 1) })}
+                    disabled={settings.lineHeight <= 1}
+                    aria-label="Less line spacing"
+                  >
+                    <Icon name="minus" size={16} />
+                  </button>
+                  <span className="setting-value">{settings.lineHeight.toFixed(1)}</span>
+                  <button
+                    className="reader-icon"
+                    onClick={() => update({ lineHeight: Math.min(Math.round((settings.lineHeight + 0.1) * 10) / 10, 2.4) })}
+                    disabled={settings.lineHeight >= 2.4}
+                    aria-label="More line spacing"
                   >
                     <Icon name="plus" size={16} />
                   </button>

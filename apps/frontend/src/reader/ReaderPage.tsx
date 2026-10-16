@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent, type ReactNode, type RefObject } from 'react'
 import { Link, useParams } from 'react-router'
-import { fileUrl, pageUrl, type Book } from '../api/client'
+import { fileUrl, isReadable, pageUrl, type Book } from '../api/client'
 import { useAnnotations, useBook, useBooks, useCreateAnnotation, useDeleteAnnotation } from '../api/queries'
 import { EpubReader } from './EpubReader'
 import { Icon } from '../components/Icon'
@@ -17,7 +17,7 @@ export function ReaderPage() {
   if (book.isPending) return <p className="page">Loading…</p>
   if (book.isError) return <p className="page error">{book.error.message}</p>
   if (book.data.format === 'epub') return <EpubReader key={book.data.id} book={book.data} />
-  if (book.data.format !== 'cbz' || book.data.pageCount === 0) {
+  if (!isReadable(book.data)) {
     return (
       <p className="page">
         This book can't be read in the browser yet. <a href={fileUrl(book.data.id)}>Download it</a>
@@ -28,7 +28,7 @@ export function ReaderPage() {
 }
 
 function Reader({ book }: { book: Book }) {
-  const [settings, update] = useReaderSettings()
+  const [settings, update] = useReaderSettings(book.format === 'pdf' ? 'pdf' : 'comic')
   const [menuOpen, setMenuOpen] = useState(settings.pinned)
   const startPage = book.completed ? 1 : Math.min(Math.max(book.readPage, 1), book.pageCount)
   const [page, setPage] = useState(startPage)
@@ -48,7 +48,8 @@ function Reader({ book }: { book: Book }) {
   useProgressSaver(book.id, progress)
   useReadingReport(book.id)
 
-  const chapters = books.data?.filter((b) => b.format === 'cbz') ?? []
+  // The series' other books that open in this reader.
+  const chapters = books.data?.filter((b) => b.format === book.format && isReadable(b)) ?? []
   const nextChapter = chapters[chapters.findIndex((c) => c.id === book.id) + 1]
   const rtl = settings.direction === 'rtl'
   const strip = settings.layout === 'strip'

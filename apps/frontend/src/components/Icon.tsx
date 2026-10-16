@@ -78,6 +78,7 @@ const paths = {
   desktop: <path d="M3 5h18v11H3zM9 20h6M12 16v4" />,
   device: <path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM3 12h18M12 3c2.5 2.5 3.5 5.5 3.5 9s-1 6.5-3.5 9c-2.5-2.5-3.5-5.5-3.5-9s1-6.5 3.5-9z" />,
   log: <path d="M5 4h14v16H5zM8.5 8.5h7M8.5 12h7M8.5 15.5h4" />,
+  lineHeight: <path d="M10 6h10M10 12h10M10 18h10M5 4v16M3 6l2-2 2 2M3 18l2 2 2-2" />,
   users: (
     <>
       <circle cx="9" cy="8" r="3.5" />

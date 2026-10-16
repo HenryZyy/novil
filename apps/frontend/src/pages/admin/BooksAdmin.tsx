@@ -4,6 +4,7 @@ import type { Book, BookQuery } from '../../api/client'
 import { useLibraries, useSearchBooks, useSetHidden, useSetSeriesHidden } from '../../api/queries'
 import { Cover } from '../../components/Cover'
 import { Dropdown, type Choice } from '../../components/Dropdown'
+import { DeleteBookDialog } from '../../components/DeleteBookDialog'
 import { EditBookDialog } from '../../components/EditBookDialog'
 import { Icon } from '../../components/Icon'
 import { formatSize, plural } from '../../format'
@@ -28,6 +29,7 @@ export function BooksAdmin() {
   const [search, setSearch] = useState(query.search ?? '')
   const searchTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const [editing, setEditing] = useState<Book | null>(null)
+  const [deleting, setDeleting] = useState<Book | null>(null)
 
   const set = (key: string, value: string) =>
     setParams(
@@ -97,16 +99,25 @@ export function BooksAdmin() {
       ) : (
         <div className="book-admin">
           {groups.map((group) => (
-            <SeriesGroup key={group[0].seriesId} books={group} onEdit={setEditing} />
+            <SeriesGroup key={group[0].seriesId} books={group} onEdit={setEditing} onDelete={setDeleting} />
           ))}
         </div>
       )}
       {editing && <EditBookDialog key={editing.id} book={editing} onClose={() => setEditing(null)} />}
+      {deleting && <DeleteBookDialog key={deleting.id} book={deleting} onClose={() => setDeleting(null)} />}
     </>
   )
 }
 
-function SeriesGroup({ books, onEdit }: { books: Book[]; onEdit: (book: Book) => void }) {
+function SeriesGroup({
+  books,
+  onEdit,
+  onDelete,
+}: {
+  books: Book[]
+  onEdit: (book: Book) => void
+  onDelete: (book: Book) => void
+}) {
   const setSeriesHidden = useSetSeriesHidden()
   const { seriesId, seriesName } = books[0]
   const hidden = books.filter((b) => b.hidden).length
@@ -133,14 +144,14 @@ function SeriesGroup({ books, onEdit }: { books: Book[]; onEdit: (book: Book) =>
       </header>
       <ul>
         {books.map((book) => (
-          <BookRow key={book.id} book={book} onEdit={() => onEdit(book)} />
+          <BookRow key={book.id} book={book} onEdit={() => onEdit(book)} onDelete={() => onDelete(book)} />
         ))}
       </ul>
     </section>
   )
 }
 
-function BookRow({ book, onEdit }: { book: Book; onEdit: () => void }) {
+function BookRow({ book, onEdit, onDelete }: { book: Book; onEdit: () => void; onDelete: () => void }) {
   const setHidden = useSetHidden()
   // Shows the new state while it's being saved.
   const hidden = setHidden.isPending ? setHidden.variables.hidden : book.hidden
@@ -155,6 +166,9 @@ function BookRow({ book, onEdit }: { book: Book; onEdit: () => void }) {
       </div>
       <button className="book-admin-edit" onClick={onEdit} aria-label={`Edit ${book.title}`} title="Edit details">
         <Icon name="edit" size={18} />
+      </button>
+      <button className="book-admin-edit danger" onClick={onDelete} aria-label={`Delete ${book.title}`} title="Delete">
+        <Icon name="trash" size={18} />
       </button>
       <button
         className="visibility-switch"

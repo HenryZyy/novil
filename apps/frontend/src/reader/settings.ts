@@ -41,15 +41,18 @@ const defaults: ReaderSettings = {
   pinned: false,
 }
 
-const storageKey = 'novil.reader'
+// Comics and PDFs are remembered apart: a manga read right to left doesn't
+// turn PDFs around.
+export type ReaderKind = 'comic' | 'pdf'
+const storageKeys: Record<ReaderKind, string> = { comic: 'novil.reader', pdf: 'novil.reader.pdf' }
 
 function pick<K extends keyof ReaderSettings>(choices: Choices<K>, value: unknown, fallback: ReaderSettings[K]) {
   return choices.some(([v]) => v === value) ? (value as ReaderSettings[K]) : fallback
 }
 
-function load(): ReaderSettings {
+function load(kind: ReaderKind): ReaderSettings {
   try {
-    const saved = JSON.parse(localStorage.getItem(storageKey) ?? '{}')
+    const saved = JSON.parse(localStorage.getItem(storageKeys[kind]) ?? '{}')
     return {
       layout: pick(layouts, saved.layout, defaults.layout),
       fit: pick(fits, saved.fit, defaults.fit),
@@ -64,13 +67,13 @@ function load(): ReaderSettings {
   }
 }
 
-export function useReaderSettings() {
-  const [settings, setSettings] = useState(load)
+export function useReaderSettings(kind: ReaderKind) {
+  const [settings, setSettings] = useState(() => load(kind))
   const update = (changes: Partial<ReaderSettings>) =>
     setSettings((current) => {
       const next = { ...current, ...changes }
       try {
-        localStorage.setItem(storageKey, JSON.stringify(next))
+        localStorage.setItem(storageKeys[kind], JSON.stringify(next))
       } catch {
         // The settings just aren't remembered then.
       }

@@ -11,6 +11,7 @@ import {
   useSetSeriesRead,
 } from '../api/queries'
 import { CardMenu, type MenuItem } from './CardMenu'
+import { DeleteBookDialog } from './DeleteBookDialog'
 import { EditBookDialog } from './EditBookDialog'
 
 function listItems(series: Series | undefined, setListed: ReturnType<typeof useSetListed>): MenuItem[] {
@@ -40,6 +41,7 @@ export function BookMenu({ book, inSeries = false }: { book: Book; inSeries?: bo
   const setListed = useSetListed()
   const setHidden = useSetHidden()
   const [editing, setEditing] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const started = book.readPage > 0 && !book.completed
 
   const items: MenuItem[] = [
@@ -63,6 +65,7 @@ export function BookMenu({ book, inSeries = false }: { book: Book; inSeries?: bo
             icon: book.hidden ? 'eye' : 'eyeOff',
             onSelect: () => setHidden.mutate({ id: book.id, hidden: !book.hidden }),
           },
+          { label: 'Delete', icon: 'trash', danger: true, onSelect: () => setDeleting(true) },
         ] as MenuItem[])
       : []),
   ]
@@ -71,6 +74,7 @@ export function BookMenu({ book, inSeries = false }: { book: Book; inSeries?: bo
     <>
       <CardMenu label={book.title} items={items} onOpen={() => setOpened(true)} />
       {editing && <EditBookDialog book={book} onClose={() => setEditing(false)} />}
+      {deleting && <DeleteBookDialog book={book} onClose={() => setDeleting(false)} />}
     </>
   )
 }

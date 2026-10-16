@@ -86,6 +86,17 @@ export const useSetBookRead = () =>
     api.saveProgress(book.id, read ? (book.format === 'epub' ? 100 : book.pageCount) : 0, read),
   )
 
+export const useDeleteBook = () => {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: api.deleteBook,
+    onSuccess: (_, id) => {
+      queryClient.removeQueries({ queryKey: ['book', id] })
+      return queryClient.invalidateQueries()
+    },
+  })
+}
+
 export const useSetHidden = () =>
   useInvalidatingMutation(({ id, hidden }: { id: number; hidden: boolean }) => api.setHidden(id, hidden))
 

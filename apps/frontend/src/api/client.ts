@@ -263,6 +263,8 @@ export const api = {
     for (const [key, value] of Object.entries(query)) if (value) params.set(key, String(value))
     return request<Book[]>(`/api/books?${params}`)
   },
+  // Deletes the file too.
+  deleteBook: (id: number) => request<void>(`/api/books/${id}`, { method: 'DELETE' }),
   setHidden: (id: number, hidden: boolean) => request<Book>(`/api/books/${id}`, json('PATCH', { hidden })),
   books: (seriesId: number) => request<Book[]>(`/api/series/${seriesId}/books`),
   book: (id: number) => request<Book>(`/api/books/${id}`),
@@ -314,7 +316,8 @@ export const api = {
     }),
 }
 
-export const isReadable = (book: Book) => book.format === 'cbz' || book.format === 'epub'
+// PDFs once the server counted their pages; it shows them page by page.
+export const isReadable = (book: Book) => book.format === 'epub' || book.pageCount > 0
 
 // The cover an admin uploaded, or one made from the file: the first page of
 // a comic or PDF, or the cover image inside an EPUB.
