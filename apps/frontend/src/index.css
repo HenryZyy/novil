@@ -199,12 +199,12 @@ button:disabled {
   text-decoration: none;
 }
 
-/* The favicon's shape, drawn in the current text colour. */
+/* The logo's shape, drawn in the current text colour. */
 .logo {
   width: 1.6em;
   height: 1.6em;
   background: currentColor;
-  mask: url('/favicon.svg') center / contain no-repeat;
+  mask: url('/logo.svg') center / contain no-repeat;
 }
 
 .admin-nav a {
