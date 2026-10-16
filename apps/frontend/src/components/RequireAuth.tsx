@@ -12,7 +12,7 @@ export function RequireAuth({ admin = false, allowPendingPassword = false }) {
   if (!me.data) {
     return <Navigate to={`/login?${new URLSearchParams({ next: location.pathname + location.search })}`} replace />
   }
-  if (me.data.mustChangePassword && !allowPendingPassword) return <Navigate to="/account" replace />
+  if (me.data.mustChangePassword && !allowPendingPassword) return <Navigate to="/profile" replace />
   if (admin && !isAdmin(me.data)) return <p className="page">Only admins can see this page.</p>
   return <Outlet />
 }

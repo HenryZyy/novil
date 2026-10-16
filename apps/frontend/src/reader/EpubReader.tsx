@@ -2,22 +2,30 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { fileUrl, type Book } from '../api/client'
 import type { FoliateView, Location, TocItem } from 'foliate-js/view.js'
+import { Icon } from '../components/Icon'
+import { useIsDark } from '../theme'
+import { MenuSection, MenuStepper, ReaderMenuPanel, SettingRow, ThemeRow } from './MenuParts'
 import { useProgressSaver } from './useProgressSaver'
 
 type Settings = {
   flow: 'paginated' | 'scrolled'
-  theme: 'light' | 'sepia' | 'dark'
+  // The book's colours. "auto" follows the site's light or dark theme.
+  theme: 'auto' | 'light' | 'sepia' | 'dark'
   font: 'publisher' | 'serif' | 'sans-serif'
   fontSize: number
 }
 
+// Light and dark match the site's own colours.
 const themes = {
-  light: { bg: '#ffffff', fg: '#1c1917', label: 'Light' },
+  light: { bg: '#faf7f6', fg: '#2b2226', label: 'Light' },
   sepia: { bg: '#f4ecd8', fg: '#433422', label: 'Sepia' },
-  dark: { bg: '#121212', fg: '#e7e5e4', label: 'Dark' },
+  dark: { bg: '#242426', fg: '#ececee', label: 'Dark' },
 }
+const themeChoices: Settings['theme'][] = ['auto', 'light', 'sepia', 'dark']
+
+const resolve = (theme: Settings['theme'], dark: boolean) => (theme === 'auto' ? (dark ? 'dark' : 'light') : theme)
 const fonts = { publisher: 'Publisher font', serif: 'Serif', 'sans-serif': 'Sans' }
-const defaults: Settings = { flow: 'paginated', theme: 'light', font: 'publisher', fontSize: 100 }
+const defaults: Settings = { flow: 'paginated', theme: 'auto', font: 'publisher', fontSize: 100 }
 const storageKey = 'novil.epubReader'
 
 function load(): Settings {
@@ -25,7 +33,7 @@ function load(): Settings {
     const saved = JSON.parse(localStorage.getItem(storageKey) ?? '{}')
     return {
       flow: saved.flow === 'scrolled' ? 'scrolled' : 'paginated',
-      theme: saved.theme in themes ? saved.theme : defaults.theme,
+      theme: themeChoices.includes(saved.theme) ? saved.theme : defaults.theme,
       font: saved.font in fonts ? saved.font : defaults.font,
       fontSize: typeof saved.fontSize === 'number' ? Math.min(Math.max(saved.fontSize, 60), 250) : defaults.fontSize,
     }
@@ -35,10 +43,11 @@ function load(): Settings {
   }
 }
 
-function styles({ theme, font, fontSize }: Settings) {
-  const { bg, fg } = themes[theme]
+function styles({ theme, font, fontSize }: Settings, dark: boolean) {
+  const resolved = resolve(theme, dark)
+  const { bg, fg } = themes[resolved]
   return `
-    html { color-scheme: ${theme === 'dark' ? 'dark' : 'light'}; --theme-bg-color: ${bg}; }
+    html { color-scheme: ${resolved === 'dark' ? 'dark' : 'light'}; --theme-bg-color: ${bg}; }
     html, body { background: ${bg} !important; color: ${fg} !important; }
     html { font-size: ${fontSize}% !important; }
     body * { color: inherit !important; }
@@ -59,6 +68,9 @@ export function EpubReader({ book }: { book: Book }) {
   const container = useRef<HTMLDivElement>(null)
   const viewRef = useRef<FoliateView | null>(null)
   const [settings, setSettings] = useState(load)
+  const dark = useIsDark()
+  // Read when the book opens, like the settings.
+  const darkRef = useRef(dark)
   const [menuOpen, setMenuOpen] = useState(false)
   const [location, setLocation] = useState<Location | null>(null)
   const [toc, setToc] = useState<TocItem[]>([])
@@ -107,7 +119,7 @@ export function EpubReader({ book }: { book: Book }) {
         view.renderer.setAttribute('flow', settingsRef.current.flow)
         view.renderer.setAttribute('max-inline-size', '720px')
         view.renderer.setAttribute('gap', '6%')
-        view.renderer.setStyles(styles(settingsRef.current))
+        view.renderer.setStyles(styles(settingsRef.current, darkRef.current))
         setToc(view.book.toc ?? [])
         await view.init({ lastLocation: startPosition.current, showTextStart: true })
       } catch (err) {
@@ -132,11 +144,12 @@ export function EpubReader({ book }: { book: Book }) {
 
   useEffect(() => {
     settingsRef.current = settings
+    darkRef.current = dark
     const view = viewRef.current
     if (!view?.renderer) return
     view.renderer.setAttribute('flow', settings.flow)
-    view.renderer.setStyles(styles(settings))
-  }, [settings])
+    view.renderer.setStyles(styles(settings, dark))
+  }, [settings, dark])
 
   const percent = location ? Math.round(location.fraction * 100) : 0
   const progress = useMemo(
@@ -150,19 +163,26 @@ export function EpubReader({ book }: { book: Book }) {
 
   const chapters = flatten(toc)
   const currentChapter = location?.tocItem?.href ?? ''
-  const theme = themes[settings.theme]
+  const chapterIndex = chapters.findIndex((c) => c.href === currentChapter)
+  const prevChapter = chapterIndex > 0 ? chapters[chapterIndex - 1] : undefined
+  const nextChapter = chapterIndex >= 0 ? chapters[chapterIndex + 1] : undefined
+  const resolved = resolve(settings.theme, dark)
+  const colors = themes[resolved]
+  const cycle = <T,>(list: T[], current: T) => list[(list.indexOf(current) + 1) % list.length]
 
   return (
-    <div className="reader epub-reader" style={{ background: theme.bg, color: theme.fg }}>
-      <header className="reader-bar" style={{ background: theme.bg, color: theme.fg }}>
-        <Link to={`/series/${book.seriesId}`}>← Back</Link>
-        <span className="card-title">
-          {book.title}
-          {location?.tocItem?.label ? ` · ${location.tocItem.label}` : ''}
+    <div className="reader epub-reader" style={{ background: colors.bg, color: colors.fg }}>
+      <header className="reader-bar" style={{ background: colors.bg, color: colors.fg }}>
+        <Link to={`/series/${book.seriesId}`} className="reader-icon" aria-label="Back to series" title="Back to series">
+          <Icon name="back" />
+        </Link>
+        <span className="reader-title">
+          <strong>{book.title}</strong>
+          {location?.tocItem?.label && <span>{location.tocItem.label}</span>}
         </span>
-        <span className="muted">{percent}%</span>
-        <button className="icon-button" onClick={() => setMenuOpen((o) => !o)} aria-label="Menu">
-          ☰
+        <span className="reader-count">{percent}%</span>
+        <button className="reader-icon" onClick={() => setMenuOpen((o) => !o)} aria-label="Menu" aria-expanded={menuOpen}>
+          <Icon name="menu" />
         </button>
       </header>
 
@@ -182,91 +202,92 @@ export function EpubReader({ book }: { book: Book }) {
       {menuOpen && (
         <>
           <div className="reader-backdrop" onClick={() => setMenuOpen(false)} />
-          <aside className="reader-menu" aria-label="Reader menu">
-            <div className="reader-menu-top">
-              <button className="icon-button" onClick={() => setMenuOpen(false)} aria-label="Close menu">
-                ✕
-              </button>
-            </div>
-            <div className="reader-menu-title">
-              <Link to={`/series/${book.seriesId}`}>{book.seriesName}</Link>
-              <span>{book.title}</span>
-            </div>
-
+          <ReaderMenuPanel
+            seriesId={book.seriesId}
+            seriesName={book.seriesName}
+            title={book.title}
+            onClose={() => setMenuOpen(false)}
+          >
             {chapters.length > 0 && (
-              <div className="stepper">
-                <label>
-                  <span className="muted">Chapter</span>
+              <MenuSection title="Chapter">
+                <MenuStepper
+                  label="chapter"
+                  onPrev={prevChapter ? () => viewRef.current?.goTo(prevChapter.href) : undefined}
+                  onNext={nextChapter ? () => viewRef.current?.goTo(nextChapter.href) : undefined}
+                >
                   <select value={currentChapter} onChange={(e) => viewRef.current?.goTo(e.target.value)} aria-label="Chapter">
-                    {!chapters.some((c) => c.href === currentChapter) && <option value="">—</option>}
+                    {chapterIndex < 0 && <option value="">—</option>}
                     {chapters.map((c, i) => (
                       <option key={i} value={c.href}>
-                        {' '.repeat(c.depth * 3)}
+                        {'\u00a0'.repeat(c.depth * 3)}
                         {c.label}
                       </option>
                     ))}
                   </select>
-                </label>
-              </div>
+                </MenuStepper>
+              </MenuSection>
             )}
 
-            <label className="epub-slider">
-              <span className="muted">Progress: {percent}%</span>
+            <MenuSection title={`Progress · ${percent}%`}>
               <input
+                className="epub-slider"
                 type="range"
                 min={0}
                 max={100}
                 value={percent}
                 onChange={(e) => viewRef.current?.goToFraction(Number(e.target.value) / 100)}
+                aria-label="Progress"
               />
-            </label>
+            </MenuSection>
 
-            <hr />
-
-            <div className="reader-menu-settings">
-              <button onClick={() => update({ flow: settings.flow === 'paginated' ? 'scrolled' : 'paginated' })}>
-                {settings.flow === 'paginated' ? 'Paginated' : 'Scrolled'}
-              </button>
-              <button
-                onClick={() => {
-                  const keys = Object.keys(themes) as Settings['theme'][]
-                  update({ theme: keys[(keys.indexOf(settings.theme) + 1) % keys.length] })
-                }}
-              >
-                Theme: {theme.label}
-              </button>
-              <button
-                onClick={() => {
-                  const keys = Object.keys(fonts) as Settings['font'][]
-                  update({ font: keys[(keys.indexOf(settings.font) + 1) % keys.length] })
-                }}
-              >
-                {fonts[settings.font]}
-              </button>
-              <div className="stepper">
-                <button
-                  className="icon-button"
-                  onClick={() => update({ fontSize: Math.max(settings.fontSize - 10, 60) })}
-                  aria-label="Smaller text"
-                >
-                  A−
-                </button>
-                <label>
-                  <span className="muted">Text size</span>
-                  <span>{settings.fontSize}%</span>
-                </label>
-                <button
-                  className="icon-button"
-                  onClick={() => update({ fontSize: Math.min(settings.fontSize + 10, 250) })}
-                  aria-label="Larger text"
-                >
-                  A+
-                </button>
+            <MenuSection title="Reading">
+              <SettingRow
+                icon="flow"
+                label="Layout"
+                value={settings.flow === 'paginated' ? 'Pages' : 'Scrolling'}
+                onClick={() => update({ flow: settings.flow === 'paginated' ? 'scrolled' : 'paginated' })}
+              />
+              <SettingRow
+                icon="font"
+                label="Font"
+                value={fonts[settings.font]}
+                onClick={() => update({ font: cycle(Object.keys(fonts) as Settings['font'][], settings.font) })}
+              />
+              <div className="setting-row">
+                <Icon name="textSize" />
+                <span>Text size</span>
+                <span className="size-controls">
+                  <button
+                    className="reader-icon"
+                    onClick={() => update({ fontSize: Math.max(settings.fontSize - 10, 60) })}
+                    aria-label="Smaller text"
+                  >
+                    <Icon name="minus" size={16} />
+                  </button>
+                  <span className="setting-value">{settings.fontSize}%</span>
+                  <button
+                    className="reader-icon"
+                    onClick={() => update({ fontSize: Math.min(settings.fontSize + 10, 250) })}
+                    aria-label="Larger text"
+                  >
+                    <Icon name="plus" size={16} />
+                  </button>
+                </span>
               </div>
-            </div>
+            </MenuSection>
 
-            <p className="muted">← → turn pages · M opens this menu</p>
-          </aside>
+            <MenuSection title="Display">
+              <ThemeRow />
+              <SettingRow
+                icon="palette"
+                label="Book colours"
+                value={settings.theme === 'auto' ? `Auto (${colors.label})` : themes[settings.theme].label}
+                onClick={() => update({ theme: cycle(themeChoices, settings.theme) })}
+              />
+            </MenuSection>
+
+            <p className="reader-menu-hint">← → turn pages · M opens this menu</p>
+          </ReaderMenuPanel>
         </>
       )}
     </div>

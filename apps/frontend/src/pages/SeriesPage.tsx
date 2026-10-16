@@ -2,6 +2,7 @@ import { Link, useParams } from 'react-router'
 import { isAdmin, useBooks, useCurrentUser, useLibraries, useSeries, useSetSeriesRead } from '../api/queries'
 import { isReadable } from '../api/client'
 import { BookCard } from '../components/Cards'
+import { Row } from '../components/Row'
 import { plural } from '../format'
 import { Cover } from '../components/Cover'
 
@@ -51,11 +52,11 @@ export function SeriesPage() {
           {setRead.isError && <p className="error">{setRead.error.message}</p>}
         </div>
       </div>
-      <div className="grid">
+      <Row scrollTo={next ? String(next.id) : undefined}>
         {books.data.map((book) => (
-          <BookCard key={book.id} book={book} />
+          <BookCard key={book.id} book={book} rowId={String(book.id)} />
         ))}
-      </div>
+      </Row>
     </>
   )
 }

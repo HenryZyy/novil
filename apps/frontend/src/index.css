@@ -1,29 +1,75 @@
 :root {
-  color-scheme: light dark;
-  --bg: #fafafa;
-  --fg: #18181b;
-  --muted: #71717a;
-  --line: #e4e4e7;
+  /* Sakura: warm off-white and plum-grey ink, with a cherry-blossom rose. */
+  color-scheme: light;
+  --bg: #faf7f6;
+  --fg: #2b2226;
+  --muted: #6e5f65;
+  --line: #ece3e4;
   --panel: #ffffff;
-  --accent: #d97706;
-  --error: #dc2626;
+  --accent: #b83a63;
+  --accent-soft: #f7e1e8;
+  --on-accent: #ffffff;
+  --error: #c0262d;
   font-family: system-ui, sans-serif;
   line-height: 1.5;
 }
 
+/* Dark: neutral grey instead of pure black, which is harsh to read on. */
 @media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0a0a0a;
-    --fg: #f4f4f5;
-    --muted: #a1a1aa;
-    --line: #27272a;
-    --panel: #18181b;
-    --error: #f87171;
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+    --bg: #242426;
+    --fg: #ececee;
+    --muted: #a9a9b0;
+    --line: #424246;
+    --panel: #2f2f32;
+    --accent: #f08aa8;
+    --accent-soft: #4a3038;
+    --on-accent: #2a0f19;
+    --error: #ff8a8a;
   }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #242426;
+  --fg: #ececee;
+  --muted: #a9a9b0;
+  --line: #424246;
+  --panel: #2f2f32;
+  --accent: #f08aa8;
+  --accent-soft: #4a3038;
+  --on-accent: #2a0f19;
+  --error: #ff8a8a;
+}
+
+/* The readers follow the site theme: their page background is a step
+   darker than the site's, so pages stand out, and the chrome uses the same
+   colours as the rest of novil. */
+.reader {
+  --reader-bg: color-mix(in srgb, var(--bg) 92%, #000);
+  --reader-panel: var(--panel);
+  --reader-border: var(--line);
+  --reader-fg: var(--fg);
 }
 
 * {
   box-sizing: border-box;
+}
+
+:root {
+  accent-color: var(--accent);
+  --ease: cubic-bezier(0.2, 0.7, 0.3, 1);
+  --fast: 150ms;
+  --slow: 250ms;
+  --lift-shadow: 0 10px 24px -8px rgb(0 0 0 / 0.35);
+  --header-h: 3.75rem;
+  --menu-w: min(250px, 80vw);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 body {
@@ -41,11 +87,38 @@ h2 {
   margin: 0 0 0.75rem;
 }
 
-h2 a {
-  margin-left: 0.5rem;
-  font-size: 0.875rem;
-  font-weight: normal;
+/* A section heading that opens the full list, with a chevron like Jellyfin. */
+.section-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15em;
+  color: inherit;
+  text-decoration: none;
+}
+
+.section-link svg {
+  width: 1em;
+  height: 1em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform var(--fast) var(--ease);
+}
+
+.section-link {
+  transition: color var(--fast) var(--ease);
+}
+
+.section-link:hover,
+.section-link:focus-visible {
   color: var(--accent);
+}
+
+.section-link:hover svg,
+.section-link:focus-visible svg {
+  transform: translateX(3px);
 }
 
 section {
@@ -79,7 +152,7 @@ button:disabled {
 .primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .muted {
@@ -103,11 +176,16 @@ button:disabled {
 
 /* Header */
 
+/* Sticky, so the menu always opens right under it. */
 .header {
+  position: sticky;
+  top: 0;
+  z-index: 12;
+  height: var(--header-h);
+  background: var(--bg);
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 0.5rem 1.5rem;
+  gap: 0.75rem;
   padding: 0.75rem 1rem;
   border-bottom: 1px solid var(--line);
 }
@@ -129,28 +207,259 @@ button:disabled {
   mask: url('/favicon.svg') center / contain no-repeat;
 }
 
-.nav {
-  display: flex;
-  gap: 1rem;
-  flex: 1;
-}
-
-.nav a,
 .admin-nav a {
   text-decoration: none;
   color: var(--muted);
 }
 
-.nav a.active,
 .admin-nav a.active {
-  color: var(--fg);
+  color: var(--accent);
   font-weight: 600;
+}
+
+/* Hamburger menu: a drawer under the navbar, like Jellyfin's. */
+
+.menu-button {
+  /* Above the open menu, so it can close it again. */
+  position: relative;
+  z-index: 12;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
+}
+
+
+.menu {
+  position: fixed;
+  inset: var(--header-h) auto 0 0;
+  z-index: 11;
+  width: var(--menu-w);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  padding: 0.5rem 0 1rem;
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+  /* A closed menu is also inert, so Tab and screen readers skip it. */
+  transform: translateX(-100%);
+  transition: transform 0.2s var(--ease);
+}
+
+.menu.open {
+  transform: none;
+}
+
+/* The page moves aside to make room for the open menu instead of being
+   covered by it. Wide screens reflow the content into the space left;
+   phones slide it partly off screen, like an app drawer. */
+.page {
+  transition:
+    padding-left 0.2s var(--ease),
+    transform 0.2s var(--ease);
+}
+
+/* Padding, not margin: the page is centred with auto margins, which can't
+   be animated. */
+@media (min-width: 701px) {
+  body[data-nav='open'] .page {
+    padding-left: calc(var(--menu-w) + 1rem);
+  }
+}
+
+@media (max-width: 700px) {
+  /* clip, not hidden: it can't be scrolled either, and keeps the sticky
+     navbar working. */
+  html,
+  body {
+    overflow-x: clip;
+  }
+
+  body[data-nav='open'] .page {
+    transform: translateX(var(--menu-w));
+  }
+}
+
+.menu h3 {
+  margin: 1rem 1.25rem 0.35rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.menu a {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  min-height: 2.75rem;
+  padding: 0 1.25rem;
+  color: var(--fg);
+  text-decoration: none;
+  transition:
+    background-color var(--fast) var(--ease),
+    color var(--fast) var(--ease);
+}
+
+.menu a svg {
+  flex-shrink: 0;
+  color: var(--muted);
+  transition: color var(--fast) var(--ease);
+}
+
+.menu a span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.menu a:hover {
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+}
+
+/* The current page: accent text and a bar on the left edge. */
+.menu a.active {
+  color: var(--accent);
+  font-weight: 600;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.menu a.active svg {
+  color: var(--accent);
+}
+
+.menu a.active::before {
+  content: '';
+  position: absolute;
+  inset: 0.5rem auto 0.5rem 0;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+  background: var(--accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .menu,
+  .page {
+    transition: none;
+  }
 }
 
 .user {
   display: flex;
   align-items: center;
+  gap: 0.6rem;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+
+.user .username {
+  transition: color var(--fast) var(--ease);
+}
+
+.user .avatar {
+  transition: box-shadow var(--fast) var(--ease);
+}
+
+.user:hover .username,
+.user.active .username {
+  color: var(--accent);
+}
+
+.user:hover .avatar,
+.user.active .avatar {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--line);
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.profile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  text-align: center;
+  max-width: 420px;
+  margin: 0 auto;
+}
+
+.profile h1 {
+  margin: 0.5rem 0 0;
+}
+
+.profile p {
+  margin: 0;
+}
+
+.profile .actions {
+  justify-content: center;
+  margin-top: 0.5rem;
+}
+
+/* The profile's other sections line up with the centred header. */
+.profile ~ section {
+  max-width: 420px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.header-end {
+  display: flex;
+  align-items: center;
   gap: 0.75rem;
+  margin-left: auto;
+}
+
+.theme-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  width: fit-content;
+}
+
+.segmented button {
+  border: 0;
+  border-radius: 0;
+  background: var(--panel);
+}
+
+.segmented button + button {
+  border-left: 1px solid var(--line);
+}
+
+.segmented button[aria-checked='true'] {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
 }
 
 .page {
@@ -185,7 +494,58 @@ button:disabled {
   grid-auto-columns: 150px;
   gap: 1rem;
   overflow-x: auto;
-  padding-bottom: 0.5rem;
+  /* Room for the hover lift and shadow, which a scrolling row would cut off. */
+  margin: -8px -8px 0;
+  padding: 8px 8px 1rem;
+}
+
+.row-wrap {
+  position: relative;
+}
+
+/* Scroll buttons over the row's edges, only for mouse users. */
+.row-arrow {
+  position: absolute;
+  top: calc(50% - 1.5rem);
+  z-index: 1;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--panel);
+  border-color: var(--line);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.2);
+}
+
+.row-arrow.left {
+  left: -0.5rem;
+}
+
+.row-arrow.right {
+  right: -0.5rem;
+}
+
+@media (hover: hover) {
+  .row-arrow {
+    display: inline-flex;
+    opacity: 0;
+    transition:
+      opacity var(--fast) var(--ease),
+      background-image var(--fast) var(--ease);
+  }
+
+  .row-wrap:hover .row-arrow,
+  .row-arrow:focus-visible {
+    opacity: 1;
+  }
+}
+
+.row {
+  scroll-behavior: smooth;
+  scrollbar-width: thin;
 }
 
 @media (max-width: 600px) {
@@ -205,12 +565,89 @@ button:disabled {
   text-decoration: none;
 }
 
-.card-title {
-  font-weight: 500;
+.card {
+  text-align: center;
+}
+
+.card-title,
+.card-subtitle {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.card-title {
+  font-weight: 500;
   margin-top: 0.4rem;
+}
+
+/* Home screen, after Jellyfin's */
+
+.library-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Book-shaped, like every other card. */
+  aspect-ratio: 2 / 3;
+  overflow: hidden;
+  border-radius: 6px;
+  background: linear-gradient(135deg, var(--panel), var(--line));
+  text-decoration: none;
+}
+
+.library-card img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 25%;
+  transition: transform var(--slow) var(--ease);
+}
+
+/* Darkens the cover so the name stays readable on any image. */
+.library-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgb(0 0 0 / 0.45);
+  transition: background-color var(--slow) var(--ease);
+}
+
+.library-card span {
+  position: relative;
+  z-index: 1;
+  color: #fff;
+  padding: 0 0.5rem;
+  font-size: clamp(1rem, 4vw, 1.35rem);
+  font-weight: 700;
+  text-align: center;
+  overflow-wrap: break-word;
+  text-shadow: 0 2px 8px rgb(0 0 0 / 0.6);
+}
+
+
+
+/* Book-shaped like the other covers, with the progress inside the cover. */
+.continue-thumb {
+  position: relative;
+}
+
+.continue-progress {
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  bottom: 10%;
+  height: 5px;
+  border-radius: 3px;
+  background: rgb(255 255 255 / 0.35);
+}
+
+.continue-progress div {
+  height: 100%;
+  border-radius: 3px;
+  background: #fff;
 }
 
 .cover {
@@ -221,9 +658,7 @@ button:disabled {
   background: var(--line);
 }
 
-.card:hover .cover {
-  outline: 2px solid var(--accent);
-}
+
 
 .cover-empty {
   display: flex;
@@ -366,8 +801,8 @@ td {
   --bar: 3rem;
   --menu: 320px;
   min-height: 100dvh;
-  background: #000;
-  color: #f4f4f5;
+  background: var(--reader-bg);
+  color: var(--reader-fg);
 }
 
 .reader-no-header {
@@ -381,23 +816,58 @@ td {
   height: var(--bar);
   display: flex;
   align-items: center;
-  gap: 1rem;
-  padding: 0 1rem;
-  background: rgb(0 0 0 / 0.85);
+  gap: 0.5rem;
+  padding: 0 0.5rem;
+  background: color-mix(in srgb, var(--reader-bg) 90%, transparent);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--reader-border);
 }
 
-.reader-bar .card-title {
-  margin: 0;
+.reader-title {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  overflow: hidden;
+  white-space: nowrap;
 }
 
-.icon-button {
-  min-width: 2.5rem;
-  min-height: 2.5rem;
-  padding: 0 0.6rem;
-  background: #27272a;
-  border-color: #3f3f46;
+.reader-title strong,
+.reader-title span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.reader-title span,
+.reader-count {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.reader-count {
+  padding: 0 0.5rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Round, borderless icon buttons for the reader's controls. */
+.reader-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
   color: inherit;
+}
+
+.reader-icon[aria-pressed='true'] {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
 }
 
 .reader-menu-button {
@@ -405,7 +875,8 @@ td {
   top: 0.5rem;
   right: 0.5rem;
   z-index: 2;
-  opacity: 0.6;
+  background: color-mix(in srgb, var(--reader-panel) 80%, transparent);
+  opacity: 0.7;
 }
 
 .reader-menu-button:hover {
@@ -422,43 +893,93 @@ td {
 /* Pages */
 
 .reader-pages {
+  position: relative;
+  cursor: pointer;
+  user-select: none;
+  /* Pinches are handled by the reader, not the browser's page zoom. */
+  touch-action: pan-x pan-y;
+}
+
+.reader-pages.zoomed {
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+}
+
+.reader-pages.dragging {
+  cursor: grabbing;
+}
+
+.zoom-layer {
   display: flex;
   justify-content: center;
   align-items: flex-start;
   min-height: calc(100dvh - var(--bar));
-  cursor: pointer;
-  user-select: none;
+  transform-origin: 0 0;
 }
 
-.reader-pages.rtl {
+.zoom-layer.rtl {
   flex-direction: row-reverse;
 }
 
-.reader-pages img {
+.zoom-layer img {
   display: block;
 }
 
-.fit-both .reader-pages img {
+.fit-both .zoom-layer img {
   max-width: 100%;
   max-height: calc(100dvh - var(--bar));
 }
 
-.fit-width .reader-pages img {
+.fit-width .zoom-layer img {
   width: 100%;
   height: auto;
 }
 
-.fit-height .reader-pages img {
+.fit-height .zoom-layer img {
   height: calc(100dvh - var(--bar));
   width: auto;
 }
 
-.reader-pages.double img {
+.zoom-layer.double img {
   max-width: 50%;
 }
 
-.fit-width .reader-pages.double img {
+.fit-width .zoom-layer.double img {
   width: 50%;
+}
+
+/* A zoomed strip can be wider than the screen. */
+.strip-main {
+  overflow-x: auto;
+}
+
+.reader-strip {
+  touch-action: pan-x pan-y;
+}
+
+.zoom-badge {
+  position: fixed;
+  left: 50%;
+  bottom: 1.25rem;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.15rem 0.15rem 0.15rem 0.85rem;
+  border: 1px solid var(--reader-border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--reader-panel) 92%, transparent);
+  color: var(--reader-fg);
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 2px 10px rgb(0 0 0 / 0.2);
+  transform: translateX(-50%);
+}
+
+.zoom-badge .reader-icon {
+  width: 1.9rem;
+  height: 1.9rem;
 }
 
 .reader-strip {
@@ -514,11 +1035,11 @@ td {
   padding: 0;
   border: 0;
   border-radius: 2px;
-  background: rgb(255 255 255 / 0.15);
+  background: color-mix(in srgb, var(--reader-fg) 14%, transparent);
 }
 
 .reader-progress button.read {
-  background: rgb(217 119 6 / 0.5);
+  background: color-mix(in srgb, var(--accent) 45%, transparent);
 }
 
 .reader-progress button.current {
@@ -536,13 +1057,13 @@ td {
   background: var(--accent);
 }
 
-/* Menu */
+/* Menu: a side panel in the style of the navigation drawer. */
 
+/* Catches clicks outside the menu to close it, without dimming the page. */
 .reader-backdrop {
   position: fixed;
   inset: 0;
   z-index: 3;
-  background: rgb(0 0 0 / 0.4);
 }
 
 .reader-menu {
@@ -553,21 +1074,32 @@ td {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 1rem;
-  padding: 1rem;
-  background: #18181b;
-  border-left: 1px solid #27272a;
+  padding-bottom: 1rem;
+  background: var(--reader-panel);
+  color: var(--reader-fg);
+  border-left: 1px solid var(--reader-border);
+  animation: reader-menu-in 0.2s var(--ease);
+}
+
+@keyframes reader-menu-in {
+  from {
+    transform: translateX(100%);
+  }
 }
 
 .reader-menu-top {
   display: flex;
-  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.25rem;
+  padding: 1rem 0.75rem 0.5rem 1.25rem;
 }
 
 .reader-menu-title {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.15rem;
 }
 
 .reader-menu-title a {
@@ -576,45 +1108,85 @@ td {
   text-decoration: none;
 }
 
-.reader-menu hr {
-  width: 100%;
-  border: 0;
-  border-top: 1px solid #27272a;
+.reader-menu-title span {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.reader-menu-section {
+  margin: 0;
+}
+
+.reader-menu-section h3 {
+  margin: 1rem 1.25rem 0.35rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
 
 .stepper {
   display: flex;
-  align-items: stretch;
-  gap: 0.5rem;
-}
-
-.stepper label {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  padding: 0.25rem 0.75rem;
-  border-radius: 6px;
-  background: #27272a;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0 0.75rem;
 }
 
 .stepper select {
-  padding: 0;
+  flex: 1;
+  min-width: 0;
+  height: 2.5rem;
+  background: var(--bg);
+  border-color: var(--reader-border);
+  color: inherit;
+}
+
+/* A flat row like the drawer's links: icon, name, and the current value. */
+.setting-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0 1.25rem;
   border: 0;
+  border-radius: 0;
   background: transparent;
   color: inherit;
-}
-
-.reader-menu-settings {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.reader-menu-settings button {
   text-align: left;
-  background: #27272a;
-  border-color: #3f3f46;
-  color: inherit;
+}
+
+.setting-row .icon {
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
+.setting-row > span:first-of-type {
+  flex: 1;
+}
+
+.setting-value {
+  color: var(--accent);
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.size-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.size-controls .setting-value {
+  min-width: 3rem;
+  text-align: center;
+}
+
+.reader-menu-hint {
+  margin: 1.25rem 1.25rem 0;
+  color: var(--muted);
+  font-size: 0.8rem;
 }
 
 @media (max-width: 700px) {
@@ -657,12 +1229,109 @@ td {
 }
 
 .epub-slider {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
+  width: calc(100% - 2.5rem);
+  margin: 0.25rem 1.25rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
 }
 
-.epub-slider input {
-  padding: 0;
-  accent-color: var(--accent);
+/* Hover and press feedback, all in one place. Hover only applies to devices
+   with a real pointer, so taps on phones don't leave things stuck. */
+
+button,
+.button,
+.card,
+.library-card,
+.cover {
+  transition:
+    background-color var(--fast) var(--ease),
+    background-image var(--fast) var(--ease),
+    border-color var(--fast) var(--ease),
+    box-shadow var(--slow) var(--ease),
+    transform var(--slow) var(--ease),
+    color var(--fast) var(--ease);
+}
+
+.card-title {
+  transition: color var(--fast) var(--ease);
+}
+
+@media (hover: hover) {
+  /* A thin tint of the text colour on top of whatever background the
+     button has, so it works for light, dark, primary and reader buttons. */
+  button:not(:disabled):not(.epub-edge):hover,
+  .button:hover {
+    background-image: linear-gradient(
+      color-mix(in srgb, currentColor 10%, transparent),
+      color-mix(in srgb, currentColor 10%, transparent)
+    );
+  }
+
+  .card:hover,
+  .library-card:hover {
+    transform: translateY(-4px);
+  }
+
+  .card:hover .cover,
+  .library-card:hover {
+    box-shadow: var(--lift-shadow);
+  }
+
+  .card:hover .card-title {
+    color: var(--accent);
+  }
+
+  .library-card:hover img {
+    transform: scale(1.06);
+  }
+
+  .library-card:hover::after {
+    background-color: rgb(0 0 0 / 0.3);
+  }
+}
+
+button:not(:disabled):active,
+.button:active {
+  transform: scale(0.97);
+}
+
+/* Keyboard focus shows the same lift, plus the focus ring on the cover. */
+.card:focus-visible,
+.library-card:focus-visible {
+  outline: none;
+  transform: translateY(-4px);
+}
+
+.card:focus-visible .cover,
+.library-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0s !important;
+  }
+
+  .card:hover,
+  .card:focus-visible,
+  .library-card:hover,
+  .library-card:focus-visible,
+  .library-card:hover img,
+  .section-link:hover svg,
+  button:active,
+  .button:active {
+    transform: none;
+  }
+}
+
+.icon {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }

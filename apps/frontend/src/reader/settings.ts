@@ -12,24 +12,24 @@ export type ReaderSettings = {
 type Choices<K extends keyof ReaderSettings> = [ReaderSettings[K], string][]
 
 export const layouts: Choices<'layout'> = [
-  ['single', 'Single Page'],
-  ['double', 'Double Page'],
-  ['strip', 'Long Strip'],
+  ['single', 'Single page'],
+  ['double', 'Double page'],
+  ['strip', 'Long strip'],
 ]
 export const fits: Choices<'fit'> = [
-  ['both', 'Fit Both'],
-  ['width', 'Fit Width'],
-  ['height', 'Fit Height'],
-  ['none', 'No Limit'],
+  ['both', 'Both'],
+  ['width', 'Width'],
+  ['height', 'Height'],
+  ['none', 'No limit'],
 ]
 export const directions: Choices<'direction'> = [
-  ['ltr', 'Left To Right'],
-  ['rtl', 'Right To Left'],
+  ['ltr', 'Left to right'],
+  ['rtl', 'Right to left'],
 ]
 export const progressStyles: Choices<'progress'> = [
-  ['normal', 'Normal Progress'],
-  ['light', 'Lightbar'],
-  ['hidden', 'Progress Hidden'],
+  ['normal', 'Normal'],
+  ['light', 'Thin'],
+  ['hidden', 'Hidden'],
 ]
 
 const defaults: ReaderSettings = {

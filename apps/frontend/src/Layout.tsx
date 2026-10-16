@@ -1,30 +1,26 @@
 import { NavLink, Outlet } from 'react-router'
-import { isAdmin, useCurrentUser, useLogout } from './api/queries'
+import { useCurrentUser } from './api/queries'
+import { Avatar } from './components/Avatar'
+import { NavMenu } from './components/NavMenu'
+import { ThemeButton } from './components/ThemeButton'
 
 export function Layout() {
   const user = useCurrentUser()
-  const logout = useLogout()
 
   return (
     <>
       <header className="header">
+        <NavMenu />
         <NavLink to="/" className="brand">
           <span className="logo" aria-hidden="true" />
           novil
         </NavLink>
-        <nav className="nav">
-          <NavLink to="/" end>
-            Home
+        <span className="header-end">
+          <ThemeButton />
+          <NavLink to="/profile" className="user" title="Your profile">
+            <Avatar user={user} />
+            <span className="username">@{user.username}</span>
           </NavLink>
-          <NavLink to="/library">Library</NavLink>
-          {isAdmin(user) && <NavLink to="/upload">Upload</NavLink>}
-          {isAdmin(user) && <NavLink to="/admin">Dashboard</NavLink>}
-        </nav>
-        <span className="user">
-          <NavLink to="/account">{user.username}</NavLink>
-          <button onClick={() => logout.mutate()} disabled={logout.isPending}>
-            Log out
-          </button>
         </span>
       </header>
       <main className="page">
