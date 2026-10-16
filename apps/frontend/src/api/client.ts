@@ -13,6 +13,8 @@ export type Series = {
   coverBookId: number | null
   readCount: number
   readingCount: number
+  // Books only admins see; always 0 for users.
+  hiddenCount: number
   // How much of the series was read, from 0 to 1.
   progress: number
   addedAt: string
@@ -71,6 +73,14 @@ export type Book = {
   edited: MetadataField[]
   // True when an admin uploaded the cover instead of the file's.
   customCover: boolean
+  // Hidden books are only shown to admins.
+  hidden: boolean
+}
+
+export type BookQuery = {
+  library?: number
+  search?: string
+  hidden?: '' | 'hidden' | 'visible'
 }
 
 export const metadataFields = ['title', 'author', 'language', 'released', 'description'] as const
@@ -144,6 +154,13 @@ export const api = {
   series: (id: number) => request<Series>(`/api/series/${id}`),
   setSeriesRead: (id: number, read: boolean) => request<Series>(`/api/series/${id}/read`, json('PUT', { read })),
   continueReading: () => request<Book[]>('/api/continue'),
+  setSeriesHidden: (id: number, hidden: boolean) => request<Series>(`/api/series/${id}`, json('PATCH', { hidden })),
+  searchBooks: (query: BookQuery = {}) => {
+    const params = new URLSearchParams()
+    for (const [key, value] of Object.entries(query)) if (value) params.set(key, String(value))
+    return request<Book[]>(`/api/books?${params}`)
+  },
+  setHidden: (id: number, hidden: boolean) => request<Book>(`/api/books/${id}`, json('PATCH', { hidden })),
   books: (seriesId: number) => request<Book[]>(`/api/series/${seriesId}/books`),
   book: (id: number) => request<Book>(`/api/books/${id}`),
   setCover: (bookId: number, image: Blob) => request<Book>(`/api/books/${bookId}/cover`, { method: 'PUT', body: image }),

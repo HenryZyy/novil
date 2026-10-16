@@ -1,5 +1,6 @@
 import { Link } from 'react-router'
 import { useLibraries, useScanLibrary, useStats } from '../../api/queries'
+import { formatSize } from '../../format'
 
 export function Overview() {
   const stats = useStats()
@@ -50,12 +51,3 @@ function Stat({ label, value }: { label: string; value: number | string }) {
   )
 }
 
-function formatSize(bytes: number) {
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  let i = 0
-  while (bytes >= 1024 && i < units.length - 1) {
-    bytes /= 1024
-    i++
-  }
-  return `${bytes.toFixed(i === 0 ? 0 : 1)} ${units[i]}`
-}

@@ -22,6 +22,9 @@ export function AdminLayout() {
         <Item to="/admin/libraries" icon="library">
           Libraries
         </Item>
+        <Item to="/admin/books" icon="book">
+          Books
+        </Item>
         <Item to="/admin/users" icon="users">
           Users
         </Item>

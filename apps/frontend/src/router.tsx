@@ -5,6 +5,7 @@ import { ProfilePage } from './pages/ProfilePage'
 import { AdminLayout } from './pages/admin/AdminLayout'
 import { LibrariesAdmin } from './pages/admin/LibrariesAdmin'
 import { Overview } from './pages/admin/Overview'
+import { BooksAdmin } from './pages/admin/BooksAdmin'
 import { UsersAdmin } from './pages/admin/UsersAdmin'
 import { HomePage } from './pages/HomePage'
 import { LibraryPage } from './pages/LibraryPage'
@@ -38,6 +39,7 @@ export const router = createBrowserRouter([
                 children: [
                   { index: true, element: <Overview /> },
                   { path: 'libraries', element: <LibrariesAdmin /> },
+                  { path: 'books', element: <BooksAdmin /> },
                   { path: 'users', element: <UsersAdmin /> },
                 ],
               },

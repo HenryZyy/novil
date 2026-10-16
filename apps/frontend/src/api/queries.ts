@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
-import { api, ApiError, type MetadataField, type SeriesQuery } from './client'
+import { api, ApiError, type BookQuery, type MetadataField, type SeriesQuery } from './client'
 
 // The logged-in user, or null when nobody is.
 export const useMe = () =>
@@ -50,6 +50,9 @@ export const useBooks = (seriesId: number | undefined) =>
     enabled: seriesId !== undefined,
   })
 
+export const useSearchBooks = (query: BookQuery) =>
+  useQuery({ queryKey: ['books', 'search', query], queryFn: () => api.searchBooks(query), placeholderData: (previous) => previous })
+
 export const useBook = (id: number) => useQuery({ queryKey: ['book', id], queryFn: () => api.book(id) })
 
 export const useUsers = () => useQuery({ queryKey: ['users'], queryFn: api.users })
@@ -74,6 +77,12 @@ export const useScanLibrary = () => useInvalidatingMutation(api.scanLibrary)
 
 export const useSetSeriesRead = () =>
   useInvalidatingMutation(({ id, read }: { id: number; read: boolean }) => api.setSeriesRead(id, read))
+
+export const useSetHidden = () =>
+  useInvalidatingMutation(({ id, hidden }: { id: number; hidden: boolean }) => api.setHidden(id, hidden))
+
+export const useSetSeriesHidden = () =>
+  useInvalidatingMutation(({ id, hidden }: { id: number; hidden: boolean }) => api.setSeriesHidden(id, hidden))
 
 export const useCreateUser = () => useInvalidatingMutation(api.createUser)
 

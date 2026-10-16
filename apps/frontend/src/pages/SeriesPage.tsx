@@ -4,7 +4,7 @@ import { isAdmin, useBooks, useCurrentUser, useLibraries, useSeries, useSetSerie
 import { isReadable, type Book } from '../api/client'
 import { BookCard } from '../components/Cards'
 import { Row } from '../components/Row'
-import { plural } from '../format'
+import { formatSize, plural } from '../format'
 import { Cover } from '../components/Cover'
 import { EditBookDialog } from '../components/EditBookDialog'
 import { Icon } from '../components/Icon'
@@ -163,15 +163,6 @@ function formatDate(date: string) {
   return new Date(Date.UTC(y, (m || 1) - 1, d || 1)).toLocaleDateString(undefined, { ...options, timeZone: 'UTC' })
 }
 
-function formatSize(bytes: number) {
-  const units = ['B', 'KB', 'MB', 'GB']
-  let i = 0
-  while (bytes >= 1024 && i < units.length - 1) {
-    bytes /= 1024
-    i++
-  }
-  return `${bytes.toFixed(i === 0 ? 0 : 1)} ${units[i]}`
-}
 
 function languageName(code: string) {
   try {
