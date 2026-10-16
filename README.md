@@ -90,8 +90,10 @@ a `code` to check instead of the message:
 | `GET /api/series?library={id}` | user | List series, optionally of one library |
 | `GET /api/series/{id}` | user | One series |
 | `GET /api/series/{id}/books` | user | The books in a series |
+| `PATCH /api/series/{id}` | admin | `{"hidden": true}` hides all its books, `false` shows them |
+| `GET /api/books?search=…&library={id}&hidden=…` | admin | All books, by series. `search` matches title, author and series; `hidden` is `hidden` or `visible` |
 | `GET /api/books/{id}` | user | One book |
-| `PATCH /api/books/{id}` | admin | Edit metadata, see below |
+| `PATCH /api/books/{id}` | admin | Edit metadata or hide the book, see below |
 | `GET /api/books/{id}/cover` | user | The cover as a JPEG, see below |
 | `PUT /api/books/{id}/cover` | admin | Upload a cover image |
 | `DELETE /api/books/{id}/cover` | admin | Go back to the automatic cover |
@@ -125,6 +127,14 @@ admin set:
 ```json
 {"title": "Dune (Deutsch)", "language": "de", "released": null}
 ```
+
+### Hidden books
+
+Admins can hide a book from everyone else with `PATCH /api/books/{id}`
+(`{"hidden": true}`), or a whole series with `PATCH /api/series/{id}`. Users
+don't see hidden books anywhere and get `404` for them; a series whose books
+are all hidden is gone for them too. Admins still see everything: books carry
+`hidden`, and series `hiddenCount`. Scans keep books hidden.
 
 ### Covers
 

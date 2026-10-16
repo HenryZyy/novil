@@ -20,11 +20,11 @@ var maxFieldLength = map[string]int{
 	"description": 20000,
 }
 
-// updateBook lets admins correct a book's metadata. Each field in the body
-// replaces the file's value, null goes back to the file's value, and missing
-// fields stay as they are:
+// updateBook lets admins correct a book's metadata and hide it from users.
+// Each metadata field in the body replaces the file's value, null goes back
+// to the file's value, and missing fields stay as they are:
 //
-//	{"title": "Dune", "author": null}
+//	{"title": "Dune", "author": null, "hidden": true}
 func (s *Server) updateBook(w http.ResponseWriter, r *http.Request) {
 	b, ok := s.book(w, r)
 	if !ok {
@@ -40,10 +40,18 @@ func (s *Server) updateBook(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "nothing to update")
 		return
 	}
+	var hidden *bool
+	if raw, ok := req["hidden"]; ok {
+		if err := json.Unmarshal(raw, &hidden); err != nil || hidden == nil {
+			writeError(w, http.StatusBadRequest, "hidden must be true or false")
+			return
+		}
+		delete(req, "hidden")
+	}
 	changes := map[string]*string{}
 	for field, raw := range req {
 		if !slices.Contains(store.MetadataFields, field) {
-			writeError(w, http.StatusBadRequest, "unknown field "+field+"; editable are "+strings.Join(store.MetadataFields, ", "))
+			writeError(w, http.StatusBadRequest, "unknown field "+field+"; editable are hidden, "+strings.Join(store.MetadataFields, ", "))
 			return
 		}
 		if string(raw) == "null" {
@@ -62,9 +70,17 @@ func (s *Server) updateBook(w http.ResponseWriter, r *http.Request) {
 		}
 		changes[field] = &v
 	}
-	if err := s.store.SetMetadata(b.ID, changes); err != nil {
-		internalError(w, err)
-		return
+	if len(changes) > 0 {
+		if err := s.store.SetMetadata(b.ID, changes); err != nil {
+			internalError(w, err)
+			return
+		}
+	}
+	if hidden != nil {
+		if err := s.store.SetHidden(b.ID, *hidden); err != nil {
+			internalError(w, err)
+			return
+		}
 	}
 	b, err := s.store.GetBook(currentUser(r).ID, b.ID)
 	respond(w, b, err)

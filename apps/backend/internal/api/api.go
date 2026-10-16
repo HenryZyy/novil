@@ -96,9 +96,11 @@ func New(st *store.Store, tokens *auth.Tokens, opts Options) http.Handler {
 	mux.HandleFunc("GET /api/series/{id}", s.guard(member, s.getSeries))
 	mux.HandleFunc("GET /api/series/{id}/books", s.guard(member, s.listBooks))
 	mux.HandleFunc("PUT /api/series/{id}/read", s.guard(member, s.setSeriesRead))
+	mux.HandleFunc("PATCH /api/series/{id}", s.guard(adminOnly, s.updateSeries))
 	mux.HandleFunc("GET /api/continue", s.guard(member, s.continueReading))
 	mux.HandleFunc("GET /api/stats", s.guard(adminOnly, s.stats))
 
+	mux.HandleFunc("GET /api/books", s.guard(adminOnly, s.searchBooks))
 	mux.HandleFunc("GET /api/books/{id}", s.guard(member, s.getBook))
 	mux.HandleFunc("PATCH /api/books/{id}", s.guard(adminOnly, s.updateBook))
 	mux.HandleFunc("GET /api/books/{id}/cover", s.guard(member, s.getCover))
@@ -300,6 +302,55 @@ func (s *Server) setSeriesRead(w http.ResponseWriter, r *http.Request) {
 	}
 	sr, err := s.store.GetSeries(userID, id)
 	respond(w, sr, err)
+}
+
+// updateSeries hides or shows all books of a series: {"hidden": true}.
+func (s *Server) updateSeries(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r, "id")
+	if !ok {
+		return
+	}
+	var req struct {
+		Hidden *bool `json:"hidden"`
+	}
+	if err := decodeJSON(w, r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	if req.Hidden == nil {
+		writeError(w, http.StatusBadRequest, "nothing to update")
+		return
+	}
+	userID := currentUser(r).ID
+	if _, err := s.store.GetSeries(userID, id); err != nil {
+		respond(w, nil, err)
+		return
+	}
+	if err := s.store.SetSeriesHidden(id, *req.Hidden); err != nil {
+		internalError(w, err)
+		return
+	}
+	sr, err := s.store.GetSeries(userID, id)
+	respond(w, sr, err)
+}
+
+func (s *Server) searchBooks(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query()
+	q := store.BookQuery{Search: strings.TrimSpace(query.Get("search")), Hidden: query.Get("hidden")}
+	if v := query.Get("library"); v != "" {
+		id, err := strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid library id")
+			return
+		}
+		q.LibraryID = id
+	}
+	if q.Hidden != "" && q.Hidden != "hidden" && q.Hidden != "visible" {
+		writeError(w, http.StatusBadRequest, "hidden must be hidden or visible")
+		return
+	}
+	books, err := s.store.SearchBooks(currentUser(r).ID, q)
+	respond(w, books, err)
 }
 
 func (s *Server) continueReading(w http.ResponseWriter, r *http.Request) {

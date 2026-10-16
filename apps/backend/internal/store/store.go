@@ -31,6 +31,9 @@ type Series struct {
 	CoverBookID  *int64 `json:"coverBookId"`
 	ReadCount    int    `json:"readCount"`
 	ReadingCount int    `json:"readingCount"`
+	// HiddenCount is how many books only admins see. Always 0 for users,
+	// who don't get hidden books at all.
+	HiddenCount int `json:"hiddenCount"`
 	// Progress is how much of the series was read, from 0 to 1.
 	Progress   float64 `json:"progress"`
 	AddedAt    string  `json:"addedAt"`
@@ -58,6 +61,8 @@ type Book struct {
 
 	// CustomCover is true when an admin uploaded the cover.
 	CustomCover bool `json:"customCover"`
+	// Hidden books are only shown to admins.
+	Hidden bool `json:"hidden"`
 
 	ReadPage     int    `json:"readPage"`
 	ReadPosition string `json:"readPosition"`
@@ -132,11 +137,21 @@ func (s *Store) SetAllowUploads(id int64, allow bool) (Library, error) {
 	return s.GetLibrary(id)
 }
 
-const seriesSelect = `
+// visibleTo is true for the books (named by alias) that user ?1 may see:
+// all of them for admins, the ones not hidden for everyone else. Each
+// request rereads the role, so a role change applies right away.
+func visibleTo(alias string) string {
+	return `(NOT ` + alias + `.hidden OR EXISTS (SELECT 1 FROM users WHERE id = ?1 AND role = 'admin'))`
+}
+
+// Series without a visible book don't exist for the user; see the HAVING
+// in ListSeries and GetSeries.
+var seriesSelect = `
 	SELECT s.id, s.library_id, s.name, COUNT(b.id),
-		(SELECT id FROM books WHERE series_id = s.id ORDER BY sort_order LIMIT 1),
+		(SELECT id FROM books cb WHERE cb.series_id = s.id AND ` + visibleTo("cb") + ` ORDER BY cb.sort_order LIMIT 1),
 		COUNT(CASE WHEN p.completed THEN 1 END),
 		COUNT(CASE WHEN p.page > 0 AND NOT p.completed THEN 1 END),
+		COUNT(CASE WHEN b.hidden THEN 1 END),
 		-- How much of the series was read: each book's share, a page out of
 		-- its pages, or for EPUBs (no pages) the percentage they store.
 		COALESCE(SUM(CASE
@@ -146,14 +161,14 @@ const seriesSelect = `
 		END) / COUNT(b.id), 0),
 		COALESCE(MAX(b.created_at), ''), MAX(p.updated_at)
 	FROM series s
-	LEFT JOIN books b ON b.series_id = s.id
+	LEFT JOIN books b ON b.series_id = s.id AND ` + visibleTo("b") + `
 	LEFT JOIN progress p ON p.book_id = b.id AND p.user_id = ?1
 	LEFT JOIN book_overrides o ON o.book_id = b.id`
 
 func scanSeries(row interface{ Scan(...any) error }) (Series, error) {
 	var sr Series
 	err := row.Scan(&sr.ID, &sr.LibraryID, &sr.Name, &sr.BookCount, &sr.CoverBookID,
-		&sr.ReadCount, &sr.ReadingCount, &sr.Progress, &sr.AddedAt, &sr.LastReadAt)
+		&sr.ReadCount, &sr.ReadingCount, &sr.HiddenCount, &sr.Progress, &sr.AddedAt, &sr.LastReadAt)
 	return sr, err
 }
 
@@ -167,9 +182,10 @@ type SeriesQuery struct {
 }
 
 var seriesStatus = map[string]string{
-	"unread":  `HAVING COUNT(p.book_id) = 0`,
-	"reading": `HAVING COUNT(p.book_id) > 0 AND COUNT(CASE WHEN p.completed THEN 1 END) < COUNT(b.id)`,
-	"read":    `HAVING COUNT(b.id) > 0 AND COUNT(CASE WHEN p.completed THEN 1 END) = COUNT(b.id)`,
+	"":        ``,
+	"unread":  ` AND COUNT(p.book_id) = 0`,
+	"reading": ` AND COUNT(p.book_id) > 0 AND COUNT(CASE WHEN p.completed THEN 1 END) < COUNT(b.id)`,
+	"read":    ` AND COUNT(CASE WHEN p.completed THEN 1 END) = COUNT(b.id)`,
 }
 
 // A series' release date is its books' latest or earliest, counting admin
@@ -198,12 +214,12 @@ func (s *Store) ListSeries(userID int64, q SeriesQuery) ([]Series, error) {
 		return nil, fmt.Errorf("unknown sort %q", q.Sort)
 	}
 	having, ok := seriesStatus[q.Status]
-	if q.Status != "" && !ok {
+	if !ok {
 		return nil, fmt.Errorf("unknown status %q", q.Status)
 	}
 	rows, err := s.db.Query(seriesSelect+`
 		WHERE (?2 = 0 OR s.library_id = ?2) AND (?3 = '' OR instr(lower(s.name), lower(?3)) > 0)
-		GROUP BY s.id `+having+` ORDER BY `+order, userID, q.LibraryID, q.Search)
+		GROUP BY s.id HAVING COUNT(b.id) > 0`+having+` ORDER BY `+order, userID, q.LibraryID, q.Search)
 	if err != nil {
 		return nil, err
 	}
@@ -220,17 +236,18 @@ func (s *Store) ListSeries(userID int64, q SeriesQuery) ([]Series, error) {
 }
 
 func (s *Store) GetSeries(userID, id int64) (Series, error) {
-	sr, err := scanSeries(s.db.QueryRow(seriesSelect+` WHERE s.id = ?2 GROUP BY s.id`, userID, id))
+	sr, err := scanSeries(s.db.QueryRow(seriesSelect+` WHERE s.id = ?2 GROUP BY s.id HAVING COUNT(b.id) > 0`, userID, id))
 	return sr, notFound(err)
 }
 
 // bookSelect reads each metadata field twice: from the file (books) and
 // as set by an admin (book_overrides, NULL if not set), in MetadataFields
 // order.
+// Every query on it filters with visibleTo("b").
 const bookSelect = `
 	SELECT b.id, b.series_id, s.name, b.format, b.size, b.page_count, b.created_at,
 		COALESCE(p.page, 0), COALESCE(p.position, ''), COALESCE(p.completed, 0), b.path,
-		b.size || '-' || b.mod_time, EXISTS (SELECT 1 FROM book_covers WHERE book_id = b.id),
+		b.size || '-' || b.mod_time, EXISTS (SELECT 1 FROM book_covers WHERE book_id = b.id), b.hidden,
 		b.title, o.title, b.author, o.author, b.language, o.language,
 		b.released, o.released, b.description, o.description
 	FROM books b
@@ -244,7 +261,7 @@ func scanBook(row interface{ Scan(...any) error }) (Book, error) {
 	var override [5]sql.NullString
 	err := row.Scan(&b.ID, &b.SeriesID, &b.SeriesName, &b.Format, &b.Size, &b.PageCount, &b.AddedAt,
 		&b.ReadPage, &b.ReadPosition, &b.Completed, &b.Path,
-		&b.FileKey, &b.CustomCover,
+		&b.FileKey, &b.CustomCover, &b.Hidden,
 		&fromFile[0], &override[0], &fromFile[1], &override[1], &fromFile[2], &override[2],
 		&fromFile[3], &override[3], &fromFile[4], &override[4])
 	if err != nil {
@@ -310,21 +327,40 @@ func (s *Store) listBooks(query string, args ...any) ([]Book, error) {
 }
 
 func (s *Store) ListBooks(userID, seriesID int64) ([]Book, error) {
-	return s.listBooks(` WHERE b.series_id = ?2 ORDER BY b.sort_order`, userID, seriesID)
+	return s.listBooks(` WHERE b.series_id = ?2 AND `+visibleTo("b")+` ORDER BY b.sort_order`, userID, seriesID)
+}
+
+type BookQuery struct {
+	LibraryID int64
+	// Search matches the title (an admin's or the file's), the author and
+	// the series name.
+	Search string
+	// Hidden is "hidden", "visible" or empty for all.
+	Hidden string
+}
+
+// SearchBooks lists the books of every series, by series and then in
+// series order, for the admin dashboard.
+func (s *Store) SearchBooks(userID int64, q BookQuery) ([]Book, error) {
+	return s.listBooks(` WHERE `+visibleTo("b")+`
+		AND (?2 = 0 OR s.library_id = ?2)
+		AND (?3 = '' OR instr(lower(COALESCE(o.title, b.title) || ' ' || COALESCE(o.author, b.author) || ' ' || s.name), lower(?3)) > 0)
+		AND (?4 = '' OR b.hidden = (?4 = 'hidden'))
+		ORDER BY s.name COLLATE NOCASE, b.sort_order`, userID, q.LibraryID, q.Search, q.Hidden)
 }
 
 // ContinueReading returns the books the user has started but not finished.
 func (s *Store) ContinueReading(userID int64, limit int) ([]Book, error) {
-	return s.listBooks(` WHERE p.page > 0 AND NOT p.completed ORDER BY p.updated_at DESC LIMIT ?2`, userID, limit)
+	return s.listBooks(` WHERE p.page > 0 AND NOT p.completed AND `+visibleTo("b")+` ORDER BY p.updated_at DESC LIMIT ?2`, userID, limit)
 }
 
 func (s *Store) GetBook(userID, id int64) (Book, error) {
-	b, err := scanBook(s.db.QueryRow(bookSelect+` WHERE b.id = ?2`, userID, id))
+	b, err := scanBook(s.db.QueryRow(bookSelect+` WHERE b.id = ?2 AND `+visibleTo("b"), userID, id))
 	return b, notFound(err)
 }
 
 func (s *Store) GetBookByPath(userID int64, path string) (Book, error) {
-	b, err := scanBook(s.db.QueryRow(bookSelect+` WHERE b.path = ?2`, userID, path))
+	b, err := scanBook(s.db.QueryRow(bookSelect+` WHERE b.path = ?2 AND `+visibleTo("b"), userID, path))
 	return b, notFound(err)
 }
 
@@ -356,6 +392,18 @@ func (s *Store) SetProgress(userID int64, p Progress) (Progress, error) {
 	return p, err
 }
 
+// SetHidden hides a book from users, or shows it again.
+func (s *Store) SetHidden(bookID int64, hidden bool) error {
+	_, err := s.db.Exec(`UPDATE books SET hidden = ? WHERE id = ?`, hidden, bookID)
+	return err
+}
+
+// SetSeriesHidden hides or shows every book in a series.
+func (s *Store) SetSeriesHidden(seriesID int64, hidden bool) error {
+	_, err := s.db.Exec(`UPDATE books SET hidden = ? WHERE series_id = ?`, hidden, seriesID)
+	return err
+}
+
 // SetSeriesRead marks every book in a series as read, or clears the
 // series' progress when read is false.
 func (s *Store) SetSeriesRead(userID, seriesID int64, read bool) error {
@@ -367,7 +415,7 @@ func (s *Store) SetSeriesRead(userID, seriesID int64, read bool) error {
 	}
 	_, err := s.db.Exec(`
 		INSERT INTO progress (user_id, book_id, page, completed, updated_at)
-		SELECT ?, id, page_count, 1, ? FROM books WHERE series_id = ?
+		SELECT ?1, b.id, b.page_count, 1, ?2 FROM books b WHERE b.series_id = ?3 AND `+visibleTo("b")+`
 		ON CONFLICT (user_id, book_id) DO UPDATE SET
 			page = excluded.page, completed = 1, updated_at = excluded.updated_at`,
 		userID, time.Now().UTC().Format(timeMillis), seriesID)
