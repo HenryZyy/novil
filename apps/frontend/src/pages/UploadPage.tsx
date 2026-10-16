@@ -9,13 +9,13 @@ export function UploadPage() {
   const [params] = useSearchParams()
 
   if (libraries.isPending) return <p>Loading…</p>
-  if (libraries.isError) return <p>Error: {libraries.error.message}</p>
+  if (libraries.isError) return <p className="error">{libraries.error.message}</p>
 
   const uploadable = libraries.data.filter((l) => l.allowUploads)
   if (uploadable.length === 0) {
     return (
       <p>
-        Turn on "Allow uploads" for a library on the <Link to="/libraries">Libraries</Link> page first.
+        Turn on uploads for a library in the <Link to="/admin/libraries">dashboard</Link> first.
       </p>
     )
   }
@@ -56,29 +56,27 @@ function UploadForm({
   }
 
   return (
-    <>
+    <div className="form">
       <h1>Upload</h1>
-      <p>
-        <label>
-          Library{' '}
-          <select value={libraryId} onChange={(e) => setLibraryId(Number(e.target.value))}>
-            {libraries.map((l) => (
-              <option key={l.id} value={l.id}>
-                {l.name}
-              </option>
-            ))}
-          </select>
-        </label>
-      </p>
-      <p>
-        <label>
-          Series <input value={series} onChange={(e) => setSeries(e.target.value)} />
-        </label>
-      </p>
-      <p>
+      <label>
+        Library
+        <select value={libraryId} onChange={(e) => setLibraryId(Number(e.target.value))}>
+          {libraries.map((l) => (
+            <option key={l.id} value={l.id}>
+              {l.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Series
+        <input value={series} onChange={(e) => setSeries(e.target.value)} placeholder="New or existing series name" />
+      </label>
+      <label>
+        Files
         <input type="file" multiple accept=".cbz,.epub,.pdf" onChange={(e) => setFiles(Array.from(e.target.files ?? []))} />
-      </p>
-      <button onClick={upload} disabled={uploading || files.length === 0 || !series.trim()}>
+      </label>
+      <button className="primary" onClick={upload} disabled={uploading || files.length === 0 || !series.trim()}>
         {uploading ? 'Uploading…' : 'Upload'}
       </button>
       <ul>
@@ -86,6 +84,6 @@ function UploadForm({
           <li key={i}>{r}</li>
         ))}
       </ul>
-    </>
+    </div>
   )
 }

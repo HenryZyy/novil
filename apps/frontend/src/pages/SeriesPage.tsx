@@ -1,43 +1,61 @@
 import { Link, useParams } from 'react-router'
-import { fileUrl, type Book } from '../api/client'
-import { useBooks, useSeries } from '../api/queries'
+import { useBooks, useCurrentUser, useLibraries, useSeries, useSetSeriesRead } from '../api/queries'
+import { isReadable } from '../api/client'
+import { BookCard } from '../components/Cards'
+import { plural } from '../format'
+import { Cover } from '../components/Cover'
 
 export function SeriesPage() {
   const seriesId = Number(useParams().seriesId)
   const series = useSeries(seriesId)
   const books = useBooks(seriesId)
+  const libraries = useLibraries()
+  const user = useCurrentUser()
+  const setRead = useSetSeriesRead()
 
   if (series.isPending || books.isPending) return <p>Loading…</p>
-  if (series.isError) return <p>Error: {series.error.message}</p>
-  if (books.isError) return <p>Error: {books.error.message}</p>
+  if (series.isError) return <p className="error">{series.error.message}</p>
+  if (books.isError) return <p className="error">{books.error.message}</p>
+
+  const s = series.data
+  const next = books.data.find((b) => isReadable(b) && !b.completed)
+  const allRead = s.bookCount > 0 && s.readCount === s.bookCount
+  const canUpload = user.isAdmin && libraries.data?.some((l) => l.id === s.libraryId && l.allowUploads)
 
   return (
     <>
-      <h1>{series.data.name}</h1>
-      <p>
-        <Link to={`/upload?${new URLSearchParams({ library: String(series.data.libraryId), series: series.data.name })}`}>
-          Upload to this series
-        </Link>
-      </p>
-      <ul>
+      <div className="series-header">
+        <div className="series-cover">
+          <Cover bookId={s.coverBookId} title={s.name} />
+        </div>
+        <div>
+          <h1>{s.name}</h1>
+          <p className="muted">
+            {plural(s.bookCount, 'book')} · {s.readCount} read
+          </p>
+          <p className="actions">
+            {next && (
+              <Link to={`/read/${next.id}`} className="button primary">
+                {next.readPage > 0 ? `Continue ${next.title}` : `Start ${next.title}`}
+              </Link>
+            )}
+            <button onClick={() => setRead.mutate({ id: s.id, read: !allRead })} disabled={setRead.isPending}>
+              {allRead ? 'Mark as unread' : 'Mark as read'}
+            </button>
+            {canUpload && (
+              <Link to={`/upload?${new URLSearchParams({ library: String(s.libraryId), series: s.name })}`} className="button">
+                Upload to this series
+              </Link>
+            )}
+          </p>
+          {setRead.isError && <p className="error">{setRead.error.message}</p>}
+        </div>
+      </div>
+      <div className="grid">
         {books.data.map((book) => (
-          <li key={book.id}>
-            {book.format === 'cbz' ? (
-              <Link to={`/read/${book.id}`}>{book.title}</Link>
-            ) : (
-              <a href={fileUrl(book.id)}>{book.title}</a>
-            )}{' '}
-            ({progress(book)})
-          </li>
+          <BookCard key={book.id} book={book} />
         ))}
-      </ul>
+      </div>
     </>
   )
-}
-
-function progress(book: Book) {
-  if (book.format !== 'cbz') return `${book.format}, download`
-  if (book.completed) return 'read'
-  if (book.readPage > 0) return `page ${book.readPage} of ${book.pageCount}`
-  return `${book.pageCount} pages`
 }

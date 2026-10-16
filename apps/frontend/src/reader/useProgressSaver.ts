@@ -1,31 +1,38 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useRef } from 'react'
-import { api, type Book } from '../api/client'
+import { api } from '../api/client'
 
-// Saves shortly after the page stops changing, and when the reader closes.
-export function useProgressSaver(book: Book, page: number) {
-  const { id: bookId, pageCount, completed } = book
+export type ReadingProgress = {
+  page: number
+  position?: string
+  completed: boolean
+}
+
+// Saves shortly after the progress stops changing, and when the reader closes.
+export function useProgressSaver(bookId: number, progress: ReadingProgress | null) {
   const queryClient = useQueryClient()
-  const latest = useRef(page)
-  const saved = useRef<number | null>(null)
+  const latest = useRef(progress)
+  const saved = useRef('')
 
   const flush = useCallback(() => {
     const current = latest.current
-    if (current === saved.current) return
-    saved.current = current
+    if (!current) return
+    const key = JSON.stringify(current)
+    if (key === saved.current) return
+    saved.current = key
     api
-      .saveProgress(bookId, current, completed || current >= pageCount)
+      .saveProgress(bookId, current.page, current.completed, current.position)
       .then(() => queryClient.invalidateQueries({ queryKey: ['books'] }))
       .catch(() => {
-        saved.current = null
+        saved.current = ''
       })
-  }, [bookId, pageCount, completed, queryClient])
+  }, [bookId, queryClient])
 
   useEffect(() => {
-    latest.current = page
+    latest.current = progress
     const timer = setTimeout(flush, 500)
     return () => clearTimeout(timer)
-  }, [page, flush])
+  }, [progress, flush])
 
   useEffect(() => {
     window.addEventListener('pagehide', flush)

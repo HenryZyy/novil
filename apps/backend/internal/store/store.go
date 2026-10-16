@@ -5,12 +5,16 @@ import (
 	"cmp"
 	"database/sql"
 	"errors"
+	"fmt"
 	"time"
 
 	"novil/backend/internal/scanner"
 )
 
 var ErrNotFound = errors.New("not found")
+
+// Fixed width, so the stored strings sort in time order.
+const timeMillis = "2006-01-02T15:04:05.000Z07:00"
 
 type Library struct {
 	ID           int64  `json:"id"`
@@ -20,28 +24,37 @@ type Library struct {
 }
 
 type Series struct {
-	ID          int64  `json:"id"`
-	LibraryID   int64  `json:"libraryId"`
-	Name        string `json:"name"`
-	BookCount   int    `json:"bookCount"`
-	CoverBookID *int64 `json:"coverBookId"`
+	ID           int64   `json:"id"`
+	LibraryID    int64   `json:"libraryId"`
+	Name         string  `json:"name"`
+	BookCount    int     `json:"bookCount"`
+	CoverBookID  *int64  `json:"coverBookId"`
+	ReadCount    int     `json:"readCount"`
+	ReadingCount int     `json:"readingCount"`
+	AddedAt      string  `json:"addedAt"`
+	LastReadAt   *string `json:"lastReadAt"`
 }
 
 type Book struct {
-	ID        int64  `json:"id"`
-	SeriesID  int64  `json:"seriesId"`
-	Title     string `json:"title"`
-	Format    string `json:"format"`
-	Size      int64  `json:"size"`
-	PageCount int    `json:"pageCount"`
-	ReadPage  int    `json:"readPage"`
-	Completed bool   `json:"completed"`
-	Path      string `json:"-"`
+	ID           int64  `json:"id"`
+	SeriesID     int64  `json:"seriesId"`
+	SeriesName   string `json:"seriesName"`
+	Title        string `json:"title"`
+	Format       string `json:"format"`
+	Size         int64  `json:"size"`
+	PageCount    int    `json:"pageCount"`
+	ReadPage     int    `json:"readPage"`
+	ReadPosition string `json:"readPosition"`
+	Completed    bool   `json:"completed"`
+	Path         string `json:"-"`
 }
 
 type Progress struct {
-	BookID    int64     `json:"bookId"`
-	Page      int       `json:"page"`
+	BookID int64 `json:"bookId"`
+	// Page is the page for comics, and the percentage read for EPUBs.
+	Page int `json:"page"`
+	// Position is the EPUB CFI of the reading position; empty for comics.
+	Position  string    `json:"position"`
 	Completed bool      `json:"completed"`
 	UpdatedAt time.Time `json:"updatedAt"`
 }
@@ -99,21 +112,62 @@ func (s *Store) SetAllowUploads(id int64, allow bool) (Library, error) {
 
 const seriesSelect = `
 	SELECT s.id, s.library_id, s.name, COUNT(b.id),
-		(SELECT id FROM books WHERE series_id = s.id AND format = 'cbz' ORDER BY sort_order LIMIT 1)
-	FROM series s LEFT JOIN books b ON b.series_id = s.id`
+		(SELECT id FROM books WHERE series_id = s.id AND format = 'cbz' ORDER BY sort_order LIMIT 1),
+		COUNT(CASE WHEN p.completed THEN 1 END),
+		COUNT(CASE WHEN p.page > 0 AND NOT p.completed THEN 1 END),
+		COALESCE(MAX(b.created_at), ''), MAX(p.updated_at)
+	FROM series s
+	LEFT JOIN books b ON b.series_id = s.id
+	LEFT JOIN progress p ON p.book_id = b.id AND p.user_id = ?1`
 
-func (s *Store) ListSeries(libraryID int64) ([]Series, error) {
+func scanSeries(row interface{ Scan(...any) error }) (Series, error) {
+	var sr Series
+	err := row.Scan(&sr.ID, &sr.LibraryID, &sr.Name, &sr.BookCount, &sr.CoverBookID,
+		&sr.ReadCount, &sr.ReadingCount, &sr.AddedAt, &sr.LastReadAt)
+	return sr, err
+}
+
+type SeriesQuery struct {
+	LibraryID int64
+	Search    string
+	// Status is "unread", "reading", "read" or empty for all.
+	Status string
+	// Sort is "added", "read" or empty for by name.
+	Sort string
+}
+
+var seriesStatus = map[string]string{
+	"unread":  `HAVING COUNT(p.book_id) = 0`,
+	"reading": `HAVING COUNT(p.book_id) > 0 AND COUNT(CASE WHEN p.completed THEN 1 END) < COUNT(b.id)`,
+	"read":    `HAVING COUNT(b.id) > 0 AND COUNT(CASE WHEN p.completed THEN 1 END) = COUNT(b.id)`,
+}
+
+var seriesSort = map[string]string{
+	"":      `s.name COLLATE NOCASE`,
+	"added": `MAX(b.created_at) DESC, s.name COLLATE NOCASE`,
+	"read":  `MAX(p.updated_at) IS NULL, MAX(p.updated_at) DESC, s.name COLLATE NOCASE`,
+}
+
+func (s *Store) ListSeries(userID int64, q SeriesQuery) ([]Series, error) {
+	order, ok := seriesSort[q.Sort]
+	if !ok {
+		return nil, fmt.Errorf("unknown sort %q", q.Sort)
+	}
+	having, ok := seriesStatus[q.Status]
+	if q.Status != "" && !ok {
+		return nil, fmt.Errorf("unknown status %q", q.Status)
+	}
 	rows, err := s.db.Query(seriesSelect+`
-		WHERE ? = 0 OR s.library_id = ?
-		GROUP BY s.id ORDER BY s.name COLLATE NOCASE`, libraryID, libraryID)
+		WHERE (?2 = 0 OR s.library_id = ?2) AND (?3 = '' OR instr(lower(s.name), lower(?3)) > 0)
+		GROUP BY s.id `+having+` ORDER BY `+order, userID, q.LibraryID, q.Search)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	out := []Series{}
 	for rows.Next() {
-		var sr Series
-		if err := rows.Scan(&sr.ID, &sr.LibraryID, &sr.Name, &sr.BookCount, &sr.CoverBookID); err != nil {
+		sr, err := scanSeries(rows)
+		if err != nil {
 			return nil, err
 		}
 		out = append(out, sr)
@@ -121,26 +175,27 @@ func (s *Store) ListSeries(libraryID int64) ([]Series, error) {
 	return out, rows.Err()
 }
 
-func (s *Store) GetSeries(id int64) (Series, error) {
-	var sr Series
-	err := s.db.QueryRow(seriesSelect+` WHERE s.id = ? GROUP BY s.id`, id).
-		Scan(&sr.ID, &sr.LibraryID, &sr.Name, &sr.BookCount, &sr.CoverBookID)
+func (s *Store) GetSeries(userID, id int64) (Series, error) {
+	sr, err := scanSeries(s.db.QueryRow(seriesSelect+` WHERE s.id = ?2 GROUP BY s.id`, userID, id))
 	return sr, notFound(err)
 }
 
 const bookSelect = `
-	SELECT b.id, b.series_id, b.title, b.format, b.size, b.page_count,
-		COALESCE(p.page, 0), COALESCE(p.completed, 0), b.path
-	FROM books b LEFT JOIN progress p ON p.book_id = b.id`
+	SELECT b.id, b.series_id, s.name, b.title, b.format, b.size, b.page_count,
+		COALESCE(p.page, 0), COALESCE(p.position, ''), COALESCE(p.completed, 0), b.path
+	FROM books b
+	JOIN series s ON s.id = b.series_id
+	LEFT JOIN progress p ON p.book_id = b.id AND p.user_id = ?1`
 
 func scanBook(row interface{ Scan(...any) error }) (Book, error) {
 	var b Book
-	err := row.Scan(&b.ID, &b.SeriesID, &b.Title, &b.Format, &b.Size, &b.PageCount, &b.ReadPage, &b.Completed, &b.Path)
+	err := row.Scan(&b.ID, &b.SeriesID, &b.SeriesName, &b.Title, &b.Format, &b.Size, &b.PageCount,
+		&b.ReadPage, &b.ReadPosition, &b.Completed, &b.Path)
 	return b, err
 }
 
-func (s *Store) ListBooks(seriesID int64) ([]Book, error) {
-	rows, err := s.db.Query(bookSelect+` WHERE b.series_id = ? ORDER BY b.sort_order`, seriesID)
+func (s *Store) listBooks(query string, args ...any) ([]Book, error) {
+	rows, err := s.db.Query(bookSelect+query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -156,13 +211,22 @@ func (s *Store) ListBooks(seriesID int64) ([]Book, error) {
 	return out, rows.Err()
 }
 
-func (s *Store) GetBook(id int64) (Book, error) {
-	b, err := scanBook(s.db.QueryRow(bookSelect+` WHERE b.id = ?`, id))
+func (s *Store) ListBooks(userID, seriesID int64) ([]Book, error) {
+	return s.listBooks(` WHERE b.series_id = ?2 ORDER BY b.sort_order`, userID, seriesID)
+}
+
+// ContinueReading returns the books the user has started but not finished.
+func (s *Store) ContinueReading(userID int64, limit int) ([]Book, error) {
+	return s.listBooks(` WHERE p.page > 0 AND NOT p.completed ORDER BY p.updated_at DESC LIMIT ?2`, userID, limit)
+}
+
+func (s *Store) GetBook(userID, id int64) (Book, error) {
+	b, err := scanBook(s.db.QueryRow(bookSelect+` WHERE b.id = ?2`, userID, id))
 	return b, notFound(err)
 }
 
-func (s *Store) GetBookByPath(path string) (Book, error) {
-	b, err := scanBook(s.db.QueryRow(bookSelect+` WHERE b.path = ?`, path))
+func (s *Store) GetBookByPath(userID int64, path string) (Book, error) {
+	b, err := scanBook(s.db.QueryRow(bookSelect+` WHERE b.path = ?2`, userID, path))
 	return b, notFound(err)
 }
 
@@ -171,8 +235,8 @@ func (s *Store) GetBookByPath(path string) (Book, error) {
 func (s *Store) GetProgress(userID, bookID int64) (Progress, error) {
 	p := Progress{BookID: bookID}
 	var updated string
-	err := s.db.QueryRow(`SELECT page, completed, updated_at FROM progress WHERE user_id = ? AND book_id = ?`, userID, bookID).
-		Scan(&p.Page, &p.Completed, &updated)
+	err := s.db.QueryRow(`SELECT page, position, completed, updated_at FROM progress WHERE user_id = ? AND book_id = ?`, userID, bookID).
+		Scan(&p.Page, &p.Position, &p.Completed, &updated)
 	if errors.Is(err, sql.ErrNoRows) {
 		return p, nil
 	}
@@ -184,13 +248,51 @@ func (s *Store) GetProgress(userID, bookID int64) (Progress, error) {
 }
 
 func (s *Store) SetProgress(userID int64, p Progress) (Progress, error) {
-	p.UpdatedAt = time.Now().UTC().Truncate(time.Second)
+	p.UpdatedAt = time.Now().UTC().Truncate(time.Millisecond)
 	_, err := s.db.Exec(`
-		INSERT INTO progress (user_id, book_id, page, completed, updated_at) VALUES (?, ?, ?, ?, ?)
+		INSERT INTO progress (user_id, book_id, page, position, completed, updated_at) VALUES (?, ?, ?, ?, ?, ?)
 		ON CONFLICT (user_id, book_id) DO UPDATE SET
-			page = excluded.page, completed = excluded.completed, updated_at = excluded.updated_at`,
-		userID, p.BookID, p.Page, p.Completed, p.UpdatedAt.Format(time.RFC3339))
+			page = excluded.page, position = excluded.position, completed = excluded.completed,
+			updated_at = excluded.updated_at`,
+		userID, p.BookID, p.Page, p.Position, p.Completed, p.UpdatedAt.Format(timeMillis))
 	return p, err
+}
+
+// SetSeriesRead marks every book in a series as read, or clears the
+// series' progress when read is false.
+func (s *Store) SetSeriesRead(userID, seriesID int64, read bool) error {
+	if !read {
+		_, err := s.db.Exec(`
+			DELETE FROM progress WHERE user_id = ? AND book_id IN (SELECT id FROM books WHERE series_id = ?)`,
+			userID, seriesID)
+		return err
+	}
+	_, err := s.db.Exec(`
+		INSERT INTO progress (user_id, book_id, page, completed, updated_at)
+		SELECT ?, id, page_count, 1, ? FROM books WHERE series_id = ?
+		ON CONFLICT (user_id, book_id) DO UPDATE SET
+			page = excluded.page, completed = 1, updated_at = excluded.updated_at`,
+		userID, time.Now().UTC().Format(timeMillis), seriesID)
+	return err
+}
+
+type Stats struct {
+	Libraries int   `json:"libraries"`
+	Series    int   `json:"series"`
+	Books     int   `json:"books"`
+	Pages     int   `json:"pages"`
+	Size      int64 `json:"size"`
+	Users     int   `json:"users"`
+}
+
+func (s *Store) Stats() (Stats, error) {
+	var st Stats
+	err := s.db.QueryRow(`
+		SELECT (SELECT COUNT(*) FROM libraries), (SELECT COUNT(*) FROM series),
+			COUNT(*), COALESCE(SUM(page_count), 0), COALESCE(SUM(size), 0),
+			(SELECT COUNT(*) FROM users)
+		FROM books`).Scan(&st.Libraries, &st.Series, &st.Books, &st.Pages, &st.Size, &st.Users)
+	return st, err
 }
 
 type ScanResult struct {
@@ -251,8 +353,8 @@ func (s *Store) sync(libraryID int64, found []scanner.Series, cleanup string, ar
 		for i, b := range sr.Books {
 			var bookID int64
 			err := tx.QueryRow(`
-				INSERT INTO books (series_id, title, path, format, size, mod_time, page_count, sort_order)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+				INSERT INTO books (series_id, title, path, format, size, mod_time, page_count, sort_order, created_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 				ON CONFLICT (path) DO UPDATE SET
 					series_id = excluded.series_id, title = excluded.title, format = excluded.format,
 					size = excluded.size, mod_time = excluded.mod_time,

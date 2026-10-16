@@ -84,6 +84,9 @@ func New(st *store.Store, tokens *auth.Tokens, opts Options) http.Handler {
 	mux.HandleFunc("GET /api/series", s.guard(member, s.listSeries))
 	mux.HandleFunc("GET /api/series/{id}", s.guard(member, s.getSeries))
 	mux.HandleFunc("GET /api/series/{id}/books", s.guard(member, s.listBooks))
+	mux.HandleFunc("PUT /api/series/{id}/read", s.guard(member, s.setSeriesRead))
+	mux.HandleFunc("GET /api/continue", s.guard(member, s.continueReading))
+	mux.HandleFunc("GET /api/stats", s.guard(adminOnly, s.stats))
 
 	mux.HandleFunc("GET /api/books/{id}", s.guard(member, s.getBook))
 	mux.HandleFunc("GET /api/books/{id}/file", s.guard(member, s.getBookFile))
@@ -127,6 +130,11 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) listLibraries(w http.ResponseWriter, r *http.Request) {
 	libs, err := s.store.ListLibraries()
+	if currentUser(r).Role != store.RoleAdmin {
+		for i := range libs {
+			libs[i].Path = ""
+		}
+	}
 	respond(w, libs, err)
 }
 
@@ -205,22 +213,39 @@ func (s *Server) scanLibrary(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listSeries(w http.ResponseWriter, r *http.Request) {
-	var libraryID int64
-	if v := r.URL.Query().Get("library"); v != "" {
+	query := r.URL.Query()
+	q := store.SeriesQuery{
+		Search: strings.TrimSpace(query.Get("search")),
+		Status: query.Get("status"),
+		Sort:   query.Get("sort"),
+	}
+	if v := query.Get("library"); v != "" {
 		id, err := strconv.ParseInt(v, 10, 64)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, "invalid library id")
 			return
 		}
-		libraryID = id
+		q.LibraryID = id
 	}
-	series, err := s.store.ListSeries(libraryID)
+	switch q.Status {
+	case "", "unread", "reading", "read":
+	default:
+		writeError(w, http.StatusBadRequest, "status must be unread, reading or read")
+		return
+	}
+	switch q.Sort {
+	case "", "added", "read":
+	default:
+		writeError(w, http.StatusBadRequest, "sort must be added or read")
+		return
+	}
+	series, err := s.store.ListSeries(currentUser(r).ID, q)
 	respond(w, series, err)
 }
 
 func (s *Server) getSeries(w http.ResponseWriter, r *http.Request) {
 	if id, ok := pathID(w, r, "id"); ok {
-		sr, err := s.store.GetSeries(id)
+		sr, err := s.store.GetSeries(currentUser(r).ID, id)
 		respond(w, sr, err)
 	}
 }
@@ -230,19 +255,55 @@ func (s *Server) listBooks(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if _, err := s.store.GetSeries(id); err != nil {
+	userID := currentUser(r).ID
+	if _, err := s.store.GetSeries(userID, id); err != nil {
 		respond(w, nil, err)
 		return
 	}
-	books, err := s.store.ListBooks(id)
+	books, err := s.store.ListBooks(userID, id)
+	respond(w, books, err)
+}
+
+func (s *Server) setSeriesRead(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r, "id")
+	if !ok {
+		return
+	}
+	var req struct {
+		Read bool `json:"read"`
+	}
+	if err := decodeJSON(w, r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	userID := currentUser(r).ID
+	if _, err := s.store.GetSeries(userID, id); err != nil {
+		respond(w, nil, err)
+		return
+	}
+	if err := s.store.SetSeriesRead(userID, id, req.Read); err != nil {
+		internalError(w, err)
+		return
+	}
+	sr, err := s.store.GetSeries(userID, id)
+	respond(w, sr, err)
+}
+
+func (s *Server) continueReading(w http.ResponseWriter, r *http.Request) {
+	books, err := s.store.ContinueReading(currentUser(r).ID, 20)
 	respond(w, books, err)
 }
 
 func (s *Server) getBook(w http.ResponseWriter, r *http.Request) {
 	if id, ok := pathID(w, r, "id"); ok {
-		b, err := s.store.GetBook(id)
+		b, err := s.store.GetBook(currentUser(r).ID, id)
 		respond(w, b, err)
 	}
+}
+
+func (s *Server) stats(w http.ResponseWriter, r *http.Request) {
+	st, err := s.store.Stats()
+	respond(w, st, err)
 }
 
 func (s *Server) getBookFile(w http.ResponseWriter, r *http.Request) {
@@ -300,18 +361,30 @@ func (s *Server) setProgress(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Page      int  `json:"page"`
-		Completed bool `json:"completed"`
+		Page      int    `json:"page"`
+		Position  string `json:"position"`
+		Completed bool   `json:"completed"`
 	}
 	if err := decodeJSON(w, r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
-	if req.Page < 0 || (b.PageCount > 0 && req.Page > b.PageCount) {
+	// Books without pages (EPUBs) send a percentage instead.
+	maxPage := b.PageCount
+	if maxPage == 0 {
+		maxPage = 100
+	}
+	if req.Page < 0 || req.Page > maxPage {
 		writeError(w, http.StatusBadRequest, "page out of range")
 		return
 	}
-	p, err := s.store.SetProgress(currentUser(r).ID, store.Progress{BookID: b.ID, Page: req.Page, Completed: req.Completed})
+	if len(req.Position) > 2000 {
+		writeError(w, http.StatusBadRequest, "position is too long")
+		return
+	}
+	p, err := s.store.SetProgress(currentUser(r).ID, store.Progress{
+		BookID: b.ID, Page: req.Page, Position: req.Position, Completed: req.Completed,
+	})
 	respond(w, p, err)
 }
 
@@ -320,7 +393,7 @@ func (s *Server) book(w http.ResponseWriter, r *http.Request) (store.Book, bool)
 	if !ok {
 		return store.Book{}, false
 	}
-	b, err := s.store.GetBook(id)
+	b, err := s.store.GetBook(currentUser(r).ID, id)
 	if err != nil {
 		respond(w, nil, err)
 		return store.Book{}, false

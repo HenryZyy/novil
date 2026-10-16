@@ -100,7 +100,7 @@ func (s *Server) uploadBook(w http.ResponseWriter, r *http.Request) {
 		internalError(w, err)
 		return
 	}
-	book, err := s.store.GetBookByPath(dest)
+	book, err := s.store.GetBookByPath(currentUser(r).ID, dest)
 	if err != nil {
 		internalError(w, err)
 		return
