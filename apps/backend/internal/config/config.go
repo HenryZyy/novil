@@ -25,6 +25,10 @@ type Config struct {
 	// CORSOrigins are the browser origins allowed to call the API, e.g.
 	// the Vite dev server. Empty means no cross-origin requests.
 	CORSOrigins []string
+	// TrustedProxies are the IPs or CIDR ranges of reverse proxies in front
+	// of the server, e.g. "172.16.0.0/12". Their X-Forwarded-For header
+	// tells the client's real IP for the login rate limit.
+	TrustedProxies []string
 }
 
 // LoadEnvFile sets the variables from a .env file at path. Variables that
@@ -41,12 +45,13 @@ func LoadEnvFile(path string) error {
 // that work for local development.
 func Load() Config {
 	return Config{
-		Addr:          env("NOVIL_ADDR", ":8080"),
-		DataDir:       env("NOVIL_DATA_DIR", "data"),
-		JWTSecret:     os.Getenv("NOVIL_JWT_SECRET"),
-		AdminUser:     strings.TrimSpace(os.Getenv("NOVIL_ADMIN_USER")),
-		AdminPassword: os.Getenv("NOVIL_ADMIN_PASSWORD"),
-		CORSOrigins:   list(os.Getenv("NOVIL_CORS_ORIGINS")),
+		Addr:           env("NOVIL_ADDR", ":8080"),
+		DataDir:        env("NOVIL_DATA_DIR", "data"),
+		JWTSecret:      os.Getenv("NOVIL_JWT_SECRET"),
+		AdminUser:      strings.TrimSpace(os.Getenv("NOVIL_ADMIN_USER")),
+		AdminPassword:  os.Getenv("NOVIL_ADMIN_PASSWORD"),
+		CORSOrigins:    list(os.Getenv("NOVIL_CORS_ORIGINS")),
+		TrustedProxies: list(os.Getenv("NOVIL_TRUSTED_PROXIES")),
 	}
 }
 

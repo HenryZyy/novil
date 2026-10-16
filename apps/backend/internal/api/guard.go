@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"novil/backend/internal/auth"
 	"novil/backend/internal/store"
 )
 
@@ -22,63 +23,83 @@ const (
 	adminOnly
 )
 
-type userKey struct{}
+type authKey struct{}
+
+// authInfo is what a guard attaches to the request.
+type authInfo struct {
+	user   store.User
+	claims auth.Claims
+}
 
 // guard wraps a handler so it only runs for requests with a valid
 // "Authorization: Bearer <token>" header from a user with the given access.
 // The handler gets that user with currentUser.
 func (s *Server) guard(a access, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		user, ok := s.authenticate(w, r)
+		info, ok := s.authenticate(w, r)
 		if !ok {
 			return
 		}
-		if user.MustChangePassword && a != pendingPassword {
+		if info.user.MustChangePassword && a != pendingPassword {
 			writeCodedError(w, http.StatusForbidden, "password_change_required", "change your password first")
 			return
 		}
-		if a == adminOnly && user.Role != store.RoleAdmin {
+		if a == adminOnly && info.user.Role != store.RoleAdmin {
 			writeCodedError(w, http.StatusForbidden, "forbidden", "only admins can do this")
 			return
 		}
-		next(w, r.WithContext(context.WithValue(r.Context(), userKey{}, user)))
+		next(w, r.WithContext(context.WithValue(r.Context(), authKey{}, info)))
 	}
 }
 
 // authenticate loads the user the request's token belongs to, writing a 401
 // response and returning false if there is no valid token.
-func (s *Server) authenticate(w http.ResponseWriter, r *http.Request) (store.User, bool) {
+func (s *Server) authenticate(w http.ResponseWriter, r *http.Request) (authInfo, bool) {
 	token, ok := bearerToken(r)
 	if !ok {
 		unauthorized(w, "missing bearer token")
-		return store.User{}, false
+		return authInfo{}, false
 	}
 	claims, err := s.tokens.Parse(token)
 	if err != nil {
 		unauthorized(w, "invalid or expired token")
-		return store.User{}, false
+		return authInfo{}, false
 	}
 	user, err := s.store.GetUser(claims.UserID)
 	if errors.Is(err, store.ErrNotFound) {
 		unauthorized(w, "invalid or expired token")
-		return store.User{}, false
+		return authInfo{}, false
 	}
 	if err != nil {
 		internalError(w, err)
-		return store.User{}, false
+		return authInfo{}, false
 	}
 	// The password changed since the token was issued.
 	if user.TokenVersion != claims.Version {
 		unauthorized(w, "invalid or expired token")
-		return store.User{}, false
+		return authInfo{}, false
 	}
-	return user, true
+	revoked, err := s.store.IsTokenRevoked(claims.ID)
+	if err != nil {
+		internalError(w, err)
+		return authInfo{}, false
+	}
+	if revoked {
+		unauthorized(w, "invalid or expired token")
+		return authInfo{}, false
+	}
+	return authInfo{user: user, claims: claims}, true
 }
 
 // currentUser returns the user a guard let through. Only call it in
 // handlers wrapped with guard.
 func currentUser(r *http.Request) store.User {
-	return r.Context().Value(userKey{}).(store.User)
+	return r.Context().Value(authKey{}).(authInfo).user
+}
+
+// currentClaims returns the claims of the token a guard let through.
+func currentClaims(r *http.Request) auth.Claims {
+	return r.Context().Value(authKey{}).(authInfo).claims
 }
 
 func bearerToken(r *http.Request) (string, bool) {

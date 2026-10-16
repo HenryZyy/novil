@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/netip"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -49,10 +50,18 @@ func run() error {
 	if err := ensureAdmin(st, cfg); err != nil {
 		return err
 	}
+	proxies, err := parsePrefixes(cfg.TrustedProxies)
+	if err != nil {
+		return fmt.Errorf("NOVIL_TRUSTED_PROXIES: %w", err)
+	}
 
+	handler := api.New(st, auth.NewTokens(secret, tokenTTL), api.Options{
+		CORSOrigins:    cfg.CORSOrigins,
+		TrustedProxies: proxies,
+	})
 	srv := &http.Server{
 		Addr:              cfg.Addr,
-		Handler:           api.New(st, auth.NewTokens(secret, tokenTTL), cfg.CORSOrigins),
+		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
@@ -76,6 +85,24 @@ func run() error {
 		return srv.Shutdown(shutdownCtx)
 	}
 	return nil
+}
+
+// parsePrefixes parses IPs and CIDR ranges. A single IP becomes a range
+// containing only itself.
+func parsePrefixes(values []string) ([]netip.Prefix, error) {
+	var out []netip.Prefix
+	for _, v := range values {
+		if p, err := netip.ParsePrefix(v); err == nil {
+			out = append(out, p.Masked())
+			continue
+		}
+		addr, err := netip.ParseAddr(v)
+		if err != nil {
+			return nil, fmt.Errorf("%q is not an IP or CIDR range", v)
+		}
+		out = append(out, netip.PrefixFrom(addr.Unmap(), addr.Unmap().BitLen()))
+	}
+	return out, nil
 }
 
 // tokenTTL is how long a login lasts before the user has to log in again.

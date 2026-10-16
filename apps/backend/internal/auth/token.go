@@ -21,10 +21,14 @@ const (
 
 // Claims is what a token says about its user.
 type Claims struct {
+	// ID identifies this one token, so that logging out can revoke it
+	// without touching the user's other devices.
+	ID     string
 	UserID int64
 	// Version must match the user's token_version in the database. It is
 	// raised on password changes, which invalidates all older tokens.
-	Version int
+	Version   int
+	ExpiresAt time.Time
 }
 
 // jwtClaims is the JSON inside the token: the standard fields (sub, exp,
@@ -51,6 +55,7 @@ func (t *Tokens) Issue(userID int64, version int) (string, time.Time, error) {
 	c := jwtClaims{
 		Version: version,
 		RegisteredClaims: jwt.RegisteredClaims{
+			ID:        rand.Text(),
 			Issuer:    issuer,
 			Subject:   strconv.FormatInt(userID, 10),
 			IssuedAt:  jwt.NewNumericDate(now),
@@ -80,7 +85,11 @@ func (t *Tokens) Parse(token string) (Claims, error) {
 	if err != nil {
 		return Claims{}, fmt.Errorf("invalid subject %q", c.Subject)
 	}
-	return Claims{UserID: id, Version: c.Version}, nil
+	// A token without an ID couldn't be logged out.
+	if c.ID == "" {
+		return Claims{}, errors.New("token has no ID")
+	}
+	return Claims{ID: c.ID, UserID: id, Version: c.Version, ExpiresAt: c.ExpiresAt.Time}, nil
 }
 
 // LoadSecret returns secret if it is set. Otherwise it reads the secret

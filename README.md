@@ -39,7 +39,12 @@ Authorization: Bearer <token>
 3. A password change returns a new session like the login does. **Replace the
    stored token**: all older tokens of that user stop working.
 
-Logging out means deleting the token on the client.
+`POST /api/auth/logout` revokes the token it is sent with; delete it on the
+client too. The user's other devices stay logged in.
+
+Login and password changes are rate limited per IP: 5 attempts at once, then
+one more every 12 seconds. Beyond that the API answers `429` with a
+`Retry-After` header (seconds to wait).
 
 ### Errors
 
@@ -53,6 +58,7 @@ a `code` to check instead of the message:
 | 403 | `invalid_credentials` | Wrong current password when changing it |
 | 403 | `password_change_required` | Show the change-password screen |
 | 403 | `forbidden` | Only admins can do this |
+| 429 | `too_many_requests` | Too many password attempts, wait `Retry-After` seconds |
 
 ### Endpoints
 
@@ -60,6 +66,7 @@ a `code` to check instead of the message:
 |---|---|---|
 | `GET /health` | anyone | `{"status":"ok"}` |
 | `POST /api/auth/login` | anyone | Log in, see above |
+| `POST /api/auth/logout` | logged in¹ | Log out this token |
 | `GET /api/me` | logged in¹ | The current user |
 | `PUT /api/me/password` | logged in¹ | Change your own password |
 | `GET /api/users` | admin | List users |

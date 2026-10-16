@@ -25,7 +25,14 @@ type testEnv struct {
 	admin *client
 }
 
+// newTestServer starts a server with a login limit high enough that tests
+// don't hit it.
 func newTestServer(t *testing.T) *testEnv {
+	t.Helper()
+	return newTestServerWith(t, Options{CORSOrigins: []string{"http://localhost:5173"}, LoginBurst: 1000})
+}
+
+func newTestServerWith(t *testing.T, opts Options) *testEnv {
 	t.Helper()
 	database, err := db.Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
@@ -34,7 +41,7 @@ func newTestServer(t *testing.T) *testEnv {
 	t.Cleanup(func() { database.Close() })
 	st := store.New(database)
 	tokens := auth.NewTokens([]byte(strings.Repeat("s", 32)), time.Hour)
-	srv := httptest.NewServer(New(st, tokens, []string{"http://localhost:5173"}))
+	srv := httptest.NewServer(New(st, tokens, opts))
 	t.Cleanup(srv.Close)
 
 	env := &testEnv{srv: srv, store: st}

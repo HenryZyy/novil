@@ -25,8 +25,12 @@ func TestTokenRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.UserID != 42 || c.Version != 3 {
-		t.Errorf("claims %+v, want user 42 version 3", c)
+	if c.UserID != 42 || c.Version != 3 || !c.ExpiresAt.Equal(exp) {
+		t.Errorf("claims %+v, want user 42 version 3 expiring %v", c, exp)
+	}
+	other, _, _ := tokens.Issue(42, 3)
+	if oc, _ := tokens.Parse(other); c.ID == "" || oc.ID == c.ID {
+		t.Errorf("token IDs %q and %q, want two different ones", c.ID, oc.ID)
 	}
 }
 

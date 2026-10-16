@@ -49,6 +49,17 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	s.writeSession(w, user)
 }
 
+// logout revokes the token of this request. The user's other devices stay
+// logged in.
+func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
+	c := currentClaims(r)
+	if err := s.store.RevokeToken(c.ID, c.ExpiresAt); err != nil {
+		internalError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, currentUser(r))
 }

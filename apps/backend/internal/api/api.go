@@ -8,10 +8,12 @@ import (
 	"log/slog"
 	"mime"
 	"net/http"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"novil/backend/internal/archive"
 	"novil/backend/internal/auth"
@@ -20,20 +22,46 @@ import (
 )
 
 type Server struct {
-	store  *store.Store
-	tokens *auth.Tokens
+	store          *store.Store
+	tokens         *auth.Tokens
+	loginLimiter   *limiter
+	trustedProxies []netip.Prefix
 }
 
-// New returns the API handler. corsOrigins are the browser origins allowed
-// to call it; see cors.
-func New(st *store.Store, tokens *auth.Tokens, corsOrigins []string) http.Handler {
-	s := &Server{store: st, tokens: tokens}
+// Options are the optional API settings.
+type Options struct {
+	// CORSOrigins are the browser origins allowed to call the API; see cors.
+	CORSOrigins []string
+	// TrustedProxies are reverse proxies whose X-Forwarded-For header tells
+	// the client's real IP; see clientIP.
+	TrustedProxies []netip.Prefix
+	// Each IP may try LoginBurst passwords at once, then one more every
+	// LoginInterval. Zero means 5 and 12s, so 5 per minute in the long run.
+	LoginBurst    int
+	LoginInterval time.Duration
+}
+
+// New returns the API handler.
+func New(st *store.Store, tokens *auth.Tokens, opts Options) http.Handler {
+	if opts.LoginBurst == 0 {
+		opts.LoginBurst = 5
+	}
+	if opts.LoginInterval == 0 {
+		opts.LoginInterval = 12 * time.Second
+	}
+	s := &Server{
+		store:          st,
+		tokens:         tokens,
+		loginLimiter:   newLimiter(opts.LoginInterval, opts.LoginBurst),
+		trustedProxies: opts.TrustedProxies,
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", s.health)
 
-	mux.HandleFunc("POST /api/auth/login", s.login)
+	mux.HandleFunc("POST /api/auth/login", s.limitAttempts(s.login))
+	mux.HandleFunc("POST /api/auth/logout", s.guard(pendingPassword, s.logout))
 	mux.HandleFunc("GET /api/me", s.guard(pendingPassword, s.me))
-	mux.HandleFunc("PUT /api/me/password", s.guard(pendingPassword, s.changePassword))
+	mux.HandleFunc("PUT /api/me/password", s.guard(pendingPassword, s.limitAttempts(s.changePassword)))
 
 	mux.HandleFunc("GET /api/users", s.guard(adminOnly, s.listUsers))
 	mux.HandleFunc("POST /api/users", s.guard(adminOnly, s.createUser))
@@ -53,7 +81,7 @@ func New(st *store.Store, tokens *auth.Tokens, corsOrigins []string) http.Handle
 	mux.HandleFunc("GET /api/books/{id}/pages/{page}", s.guard(member, s.getPage))
 	mux.HandleFunc("GET /api/books/{id}/progress", s.guard(member, s.getProgress))
 	mux.HandleFunc("PUT /api/books/{id}/progress", s.guard(member, s.setProgress))
-	return cors(corsOrigins, mux)
+	return cors(opts.CORSOrigins, mux)
 }
 
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
