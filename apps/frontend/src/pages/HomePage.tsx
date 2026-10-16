@@ -76,12 +76,16 @@ export function HomePage() {
 
 function LibraryCard({ library }: { library: Library }) {
   // The cover of the library's newest series, like Jellyfin's library images.
+  // If a cover can't be loaded, the next series' cover is tried.
   const latest = useSeriesList({ library: library.id, sort: 'added' })
-  const cover = latest.data?.find((s) => s.coverBookId !== null)?.coverBookId
-  const [broken, setBroken] = useState(false)
+  const candidates = latest.data?.flatMap((s) => (s.coverBookId === null ? [] : [s.coverBookId])) ?? []
+  const [failed, setFailed] = useState(0)
+  const cover = candidates[failed]
   return (
     <Link to={`/library?library=${library.id}`} className="library-card">
-      {cover != null && !broken && <img src={coverUrl(cover)} alt="" loading="lazy" onError={() => setBroken(true)} />}
+      {cover !== undefined && (
+        <img key={cover} src={coverUrl(cover)} alt="" loading="lazy" onError={() => setFailed((n) => n + 1)} />
+      )}
       <span>{library.name}</span>
     </Link>
   )
@@ -90,16 +94,18 @@ function LibraryCard({ library }: { library: Library }) {
 function ContinueCard({ book }: { book: Book }) {
   // EPUBs store the percentage read instead of a page.
   const total = book.format === 'epub' ? 100 : book.pageCount
-  const progress = total ? book.readPage / total : 0
-  const detail =
-    book.format === 'epub' ? `${book.title} · ${book.readPage}%` : `${book.title} · Page ${book.readPage} / ${book.pageCount}`
+  const percent = total ? Math.min(Math.round((book.readPage / total) * 100), 100) : 0
+  // A single book's series has the same name, so say what it is instead.
+  const name = book.title === book.seriesName ? book.format.toUpperCase() : book.title
+  const detail = book.format === 'epub' ? name : `${name} · Page ${book.readPage} / ${book.pageCount}`
   return (
     <Link to={`/read/${book.id}`} className="card continue-card">
-      <div className="continue-thumb">
-        <Cover bookId={hasCover(book) ? book.id : null} title={book.seriesName} />
-        <div className="continue-progress">
-          <div style={{ width: `${Math.max(progress, 0.02) * 100}%` }} />
+      <Cover bookId={hasCover(book) ? book.id : null} title={book.seriesName} />
+      <div className="continue-progress" role="progressbar" aria-valuenow={percent} aria-label="Read">
+        <div className="continue-track">
+          <div style={{ width: `${Math.max(percent, 2)}%` }} />
         </div>
+        <span>{percent}%</span>
       </div>
       <span className="card-title" title={book.seriesName}>
         {book.seriesName}
