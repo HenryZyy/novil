@@ -80,10 +80,13 @@ a `code` to check instead of the message:
 | `GET /api/libraries` | user | List libraries |
 | `POST /api/libraries` | admin | `{"name", "path"}` adds a folder on the server |
 | `POST /api/libraries/{id}/scan` | admin | Rescan a library's files |
+| `PATCH /api/libraries/{id}` | admin | `{"allowUploads": true}` turns uploads into this library on or off |
+| `POST /api/libraries/{id}/books?series=…&filename=…` | admin | Upload a book: the raw file as the body. Only `.cbz`, `.epub` and `.pdf`, and the content must really be that format |
 | `GET /api/series?library={id}` | user | List series, optionally of one library |
 | `GET /api/series/{id}` | user | One series |
 | `GET /api/series/{id}/books` | user | The books in a series |
 | `GET /api/books/{id}` | user | One book |
+| `PATCH /api/books/{id}` | admin | Edit metadata, see below |
 | `GET /api/books/{id}/file` | user | Download the book file |
 | `GET /api/books/{id}/pages/{n}` | user | Page `n` (from 1) of a CBZ as an image |
 | `GET /api/books/{id}/progress` | user | Your progress: `{"bookId", "page", "completed", "updatedAt"}` |
@@ -92,7 +95,28 @@ a `code` to check instead of the message:
 ¹ Also works while the user still has to change their password.
 
 "user" means any logged-in user who has set their own password; admins can
-do everything users can. Progress is per user.
+do everything users can. Only admins add books; every user sees and reads
+all of them. Progress is per user.
+
+### Book metadata
+
+Books carry `title`, `author`, `language`, `released` (publication date as
+`2006`, `2006-01` or `2006-01-02`, or empty), `description` (plain text),
+`addedAt` (when uploaded or first scanned), `pageCount` (CBZ only, else 0),
+`size` (bytes) and `format`.
+
+Scans and uploads read them from the file: the package document of an EPUB,
+the `ComicInfo.xml` of a CBZ. PDFs only get their file name as the title for
+now. Empty fields are unknown.
+
+Admins can correct them per book with `PATCH /api/books/{id}`: a string
+replaces the file's value, `null` goes back to it, and fields left out stay
+unchanged. Scans never overwrite these edits. `edited` lists the fields an
+admin set:
+
+```json
+{"title": "Dune (Deutsch)", "language": "de", "released": null}
+```
 
 Thanks to the cookie, `<img src="/api/books/1/pages/1">` and download links
 work in the browser as they are. Other clients send the header.

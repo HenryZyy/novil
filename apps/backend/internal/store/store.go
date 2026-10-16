@@ -36,18 +36,33 @@ type Series struct {
 }
 
 type Book struct {
-	ID           int64  `json:"id"`
-	SeriesID     int64  `json:"seriesId"`
-	SeriesName   string `json:"seriesName"`
-	Title        string `json:"title"`
-	Format       string `json:"format"`
-	Size         int64  `json:"size"`
-	PageCount    int    `json:"pageCount"`
+	ID         int64  `json:"id"`
+	SeriesID   int64  `json:"seriesId"`
+	SeriesName string `json:"seriesName"`
+	Format     string `json:"format"`
+	Size       int64  `json:"size"`
+	PageCount  int    `json:"pageCount"`
+	// AddedAt is when the book was uploaded or first found by a scan.
+	AddedAt string `json:"addedAt"`
+
+	// Metadata from the file, or what an admin set instead. Edited lists
+	// the fields an admin set.
+	Title       string   `json:"title"`
+	Author      string   `json:"author"`
+	Language    string   `json:"language"`
+	Released    string   `json:"released"`
+	Description string   `json:"description"`
+	Edited      []string `json:"edited"`
+
 	ReadPage     int    `json:"readPage"`
 	ReadPosition string `json:"readPosition"`
 	Completed    bool   `json:"completed"`
 	Path         string `json:"-"`
 }
+
+// MetadataFields are the book fields an admin can edit, named as in JSON
+// and in the books and book_overrides tables.
+var MetadataFields = []string{"title", "author", "language", "released", "description"}
 
 type Progress struct {
 	BookID int64 `json:"bookId"`
@@ -180,18 +195,70 @@ func (s *Store) GetSeries(userID, id int64) (Series, error) {
 	return sr, notFound(err)
 }
 
+// bookSelect reads each metadata field twice: from the file (books) and
+// as set by an admin (book_overrides, NULL if not set), in MetadataFields
+// order.
 const bookSelect = `
-	SELECT b.id, b.series_id, s.name, b.title, b.format, b.size, b.page_count,
-		COALESCE(p.page, 0), COALESCE(p.position, ''), COALESCE(p.completed, 0), b.path
+	SELECT b.id, b.series_id, s.name, b.format, b.size, b.page_count, b.created_at,
+		COALESCE(p.page, 0), COALESCE(p.position, ''), COALESCE(p.completed, 0), b.path,
+		b.title, o.title, b.author, o.author, b.language, o.language,
+		b.released, o.released, b.description, o.description
 	FROM books b
 	JOIN series s ON s.id = b.series_id
-	LEFT JOIN progress p ON p.book_id = b.id AND p.user_id = ?1`
+	LEFT JOIN progress p ON p.book_id = b.id AND p.user_id = ?1
+	LEFT JOIN book_overrides o ON o.book_id = b.id`
 
 func scanBook(row interface{ Scan(...any) error }) (Book, error) {
 	var b Book
-	err := row.Scan(&b.ID, &b.SeriesID, &b.SeriesName, &b.Title, &b.Format, &b.Size, &b.PageCount,
-		&b.ReadPage, &b.ReadPosition, &b.Completed, &b.Path)
-	return b, err
+	var fromFile [5]string
+	var override [5]sql.NullString
+	err := row.Scan(&b.ID, &b.SeriesID, &b.SeriesName, &b.Format, &b.Size, &b.PageCount, &b.AddedAt,
+		&b.ReadPage, &b.ReadPosition, &b.Completed, &b.Path,
+		&fromFile[0], &override[0], &fromFile[1], &override[1], &fromFile[2], &override[2],
+		&fromFile[3], &override[3], &fromFile[4], &override[4])
+	if err != nil {
+		return b, err
+	}
+	b.Edited = []string{}
+	for i, field := range []*string{&b.Title, &b.Author, &b.Language, &b.Released, &b.Description} {
+		*field = fromFile[i]
+		if override[i].Valid {
+			*field = override[i].String
+			b.Edited = append(b.Edited, MetadataFields[i])
+		}
+	}
+	return b, nil
+}
+
+// SetMetadata changes the admin-set metadata of a book. A value replaces
+// the file's; nil goes back to the file's. Fields not in changes stay as
+// they are.
+func (s *Store) SetMetadata(bookID int64, changes map[string]*string) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`INSERT INTO book_overrides (book_id) VALUES (?) ON CONFLICT DO NOTHING`, bookID); err != nil {
+		return err
+	}
+	for _, field := range MetadataFields {
+		v, ok := changes[field]
+		if !ok {
+			continue
+		}
+		// field comes from MetadataFields, never from the request.
+		if _, err := tx.Exec(`UPDATE book_overrides SET `+field+` = ? WHERE book_id = ?`, v, bookID); err != nil {
+			return err
+		}
+	}
+	// Tidy up books that are back to their file's values.
+	if _, err := tx.Exec(`
+		DELETE FROM book_overrides WHERE book_id = ? AND title IS NULL AND author IS NULL
+		AND language IS NULL AND released IS NULL AND description IS NULL`, bookID); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Store) listBooks(query string, args ...any) ([]Book, error) {
@@ -353,14 +420,18 @@ func (s *Store) sync(libraryID int64, found []scanner.Series, cleanup string, ar
 		for i, b := range sr.Books {
 			var bookID int64
 			err := tx.QueryRow(`
-				INSERT INTO books (series_id, title, path, format, size, mod_time, page_count, sort_order, created_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+				INSERT INTO books (series_id, title, path, format, size, mod_time, page_count, sort_order,
+					author, language, released, description, created_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 				ON CONFLICT (path) DO UPDATE SET
 					series_id = excluded.series_id, title = excluded.title, format = excluded.format,
 					size = excluded.size, mod_time = excluded.mod_time,
-					page_count = excluded.page_count, sort_order = excluded.sort_order
+					page_count = excluded.page_count, sort_order = excluded.sort_order,
+					author = excluded.author, language = excluded.language,
+					released = excluded.released, description = excluded.description
 				RETURNING id`,
 				seriesID, b.Title, b.Path, b.Format, b.Size, b.ModTime.UTC().Format(time.RFC3339), b.PageCount, i,
+				b.Metadata.Author, b.Metadata.Language, b.Metadata.Released, b.Metadata.Description,
 			).Scan(&bookID)
 			if err != nil {
 				return ScanResult{}, err

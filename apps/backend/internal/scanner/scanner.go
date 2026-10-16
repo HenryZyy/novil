@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"novil/backend/internal/archive"
+	"novil/backend/internal/metadata"
 	"novil/backend/internal/natsort"
 )
 
@@ -22,11 +23,13 @@ var Formats = map[string]string{
 
 type Book struct {
 	Path      string
-	Title     string
 	Format    string
 	Size      int64
 	ModTime   time.Time
 	PageCount int
+	// Title is Metadata.Title, or the file name if the file has none.
+	Title    string
+	Metadata metadata.Metadata
 }
 
 type Series struct {
@@ -136,6 +139,15 @@ func readBook(p string, d fs.DirEntry, format string) (Book, error) {
 		}
 		b.PageCount = c.PageCount()
 		c.Close()
+	}
+	// Broken metadata shouldn't hide a readable book.
+	md, err := metadata.Read(p, format)
+	if err != nil {
+		slog.Warn("can't read book metadata", "path", p, "err", err)
+	}
+	b.Metadata = md
+	if md.Title != "" {
+		b.Title = md.Title
 	}
 	return b, nil
 }
