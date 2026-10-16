@@ -127,13 +127,14 @@ func (s *Store) SetAllowUploads(id int64, allow bool) (Library, error) {
 
 const seriesSelect = `
 	SELECT s.id, s.library_id, s.name, COUNT(b.id),
-		(SELECT id FROM books WHERE series_id = s.id AND format = 'cbz' ORDER BY sort_order LIMIT 1),
+		(SELECT id FROM books WHERE series_id = s.id AND format IN ('cbz', 'epub') ORDER BY sort_order LIMIT 1),
 		COUNT(CASE WHEN p.completed THEN 1 END),
 		COUNT(CASE WHEN p.page > 0 AND NOT p.completed THEN 1 END),
 		COALESCE(MAX(b.created_at), ''), MAX(p.updated_at)
 	FROM series s
 	LEFT JOIN books b ON b.series_id = s.id
-	LEFT JOIN progress p ON p.book_id = b.id AND p.user_id = ?1`
+	LEFT JOIN progress p ON p.book_id = b.id AND p.user_id = ?1
+	LEFT JOIN book_overrides o ON o.book_id = b.id`
 
 func scanSeries(row interface{ Scan(...any) error }) (Series, error) {
 	var sr Series
@@ -157,10 +158,24 @@ var seriesStatus = map[string]string{
 	"read":    `HAVING COUNT(b.id) > 0 AND COUNT(CASE WHEN p.completed THEN 1 END) = COUNT(b.id)`,
 }
 
+// A series' release date is its books' latest or earliest, counting admin
+// edits. Series without one sort last either way.
+const released = `NULLIF(COALESCE(o.released, b.released), '')`
+
 var seriesSort = map[string]string{
-	"":      `s.name COLLATE NOCASE`,
-	"added": `MAX(b.created_at) DESC, s.name COLLATE NOCASE`,
-	"read":  `MAX(p.updated_at) IS NULL, MAX(p.updated_at) DESC, s.name COLLATE NOCASE`,
+	"":             `s.name COLLATE NOCASE`,
+	"name-desc":    `s.name COLLATE NOCASE DESC`,
+	"added":        `MAX(b.created_at) DESC, s.name COLLATE NOCASE`,
+	"added-asc":    `MIN(b.created_at), s.name COLLATE NOCASE`,
+	"released":     `MAX(` + released + `) IS NULL, MAX(` + released + `) DESC, s.name COLLATE NOCASE`,
+	"released-asc": `MIN(` + released + `) IS NULL, MIN(` + released + `), s.name COLLATE NOCASE`,
+	"read":         `MAX(p.updated_at) IS NULL, MAX(p.updated_at) DESC, s.name COLLATE NOCASE`,
+}
+
+// ValidSort reports whether sort is one ListSeries knows.
+func ValidSort(sort string) bool {
+	_, ok := seriesSort[sort]
+	return ok
 }
 
 func (s *Store) ListSeries(userID int64, q SeriesQuery) ([]Series, error) {

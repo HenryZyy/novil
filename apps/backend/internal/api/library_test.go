@@ -88,6 +88,13 @@ func TestSeriesQueries(t *testing.T) {
 	check("?status=reading", "Berserk")
 	check("?status=read", "Claymore")
 	check("?sort=read", "Claymore", "Berserk", "Akira")
+	check("?sort=name-desc", "Claymore", "Berserk", "Akira")
+
+	// Release dates, one from an admin edit; Akira has none and goes last.
+	c.do("PATCH", "/api/books/2", `{"released":"1989-08"}`, http.StatusOK, nil)
+	c.do("PATCH", "/api/books/4", `{"released":"2001"}`, http.StatusOK, nil)
+	check("?sort=released", "Claymore", "Berserk", "Akira")
+	check("?sort=released-asc", "Berserk", "Claymore", "Akira")
 	c.do("GET", "/api/series?sort=bogus", "", http.StatusBadRequest, nil)
 	c.do("GET", "/api/series?status=bogus", "", http.StatusBadRequest, nil)
 

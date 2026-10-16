@@ -92,6 +92,7 @@ func New(st *store.Store, tokens *auth.Tokens, opts Options) http.Handler {
 	mux.HandleFunc("PATCH /api/books/{id}", s.guard(adminOnly, s.updateBook))
 	mux.HandleFunc("GET /api/books/{id}/file", s.guard(member, s.getBookFile))
 	mux.HandleFunc("GET /api/books/{id}/pages/{page}", s.guard(member, s.getPage))
+	mux.HandleFunc("GET /api/books/{id}/cover", s.guard(member, s.getCover))
 	mux.HandleFunc("GET /api/books/{id}/progress", s.guard(member, s.getProgress))
 	mux.HandleFunc("PUT /api/books/{id}/progress", s.guard(member, s.setProgress))
 
@@ -234,10 +235,8 @@ func (s *Server) listSeries(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "status must be unread, reading or read")
 		return
 	}
-	switch q.Sort {
-	case "", "added", "read":
-	default:
-		writeError(w, http.StatusBadRequest, "sort must be added or read")
+	if !store.ValidSort(q.Sort) {
+		writeError(w, http.StatusBadRequest, "sort must be name-desc, added, added-asc, released, released-asc or read")
 		return
 	}
 	series, err := s.store.ListSeries(currentUser(r).ID, q)
@@ -330,6 +329,10 @@ func (s *Server) getPage(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "page not found")
 		return
 	}
+	writeCBZPage(w, b, n)
+}
+
+func writeCBZPage(w http.ResponseWriter, b store.Book, n int) {
 	c, err := archive.OpenCBZ(b.Path)
 	if err != nil {
 		internalError(w, err)
