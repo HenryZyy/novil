@@ -35,6 +35,21 @@ const paths = {
     </>
   ),
   edit: <path d="M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4" />,
+  search: (
+    <>
+      <circle cx="11" cy="11" r="7" />
+      <path d="m20 20-4-4" />
+    </>
+  ),
+  sort: <path d="M7 4v16m0 0-3-3m3 3 3-3M17 20V4m0 0-3 3m3-3 3 3" />,
+  check: <path d="m5 12 5 5 9-10" />,
+  chevronDown: <path d="m6 9 6 6 6-6" />,
+  status: (
+    <>
+      <circle cx="12" cy="12" r="8" />
+      <path d="m8.5 12 2.5 2.5 4.5-5" />
+    </>
+  ),
   minus: <path d="M5 12h14" />,
   plus: <path d="M12 5v14M5 12h14" />,
   palette: (

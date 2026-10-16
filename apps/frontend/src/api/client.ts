@@ -17,11 +17,13 @@ export type Series = {
   lastReadAt: string | null
 }
 
+export type SeriesSort = '' | 'name-desc' | 'added' | 'added-asc' | 'released' | 'released-asc' | 'read'
+
 export type SeriesQuery = {
   library?: number
   search?: string
   status?: '' | 'unread' | 'reading' | 'read'
-  sort?: '' | 'added' | 'read'
+  sort?: SeriesSort
 }
 
 export type User = {
@@ -151,6 +153,10 @@ export const api = {
 }
 
 export const isReadable = (book: Book) => book.format === 'cbz' || book.format === 'epub'
+
+// The first page of a comic, or the cover image inside an EPUB.
+export const coverUrl = (bookId: number) => `/api/books/${bookId}/cover`
+export const hasCover = (book: Book) => book.format === 'cbz' || book.format === 'epub'
 
 export const pageUrl = (bookId: number, page: number) => `/api/books/${bookId}/pages/${page}`
 export const fileUrl = (bookId: number) => `/api/books/${bookId}/file`

@@ -1,5 +1,6 @@
+import { useState } from 'react'
 import { Link } from 'react-router'
-import { pageUrl, type Book, type Library } from '../api/client'
+import { coverUrl, hasCover, type Book, type Library } from '../api/client'
 import { isAdmin, useContinueReading, useCurrentUser, useLibraries, useSeriesList } from '../api/queries'
 import { SeriesCard } from '../components/Cards'
 import { Cover } from '../components/Cover'
@@ -77,9 +78,10 @@ function LibraryCard({ library }: { library: Library }) {
   // The cover of the library's newest series, like Jellyfin's library images.
   const latest = useSeriesList({ library: library.id, sort: 'added' })
   const cover = latest.data?.find((s) => s.coverBookId !== null)?.coverBookId
+  const [broken, setBroken] = useState(false)
   return (
     <Link to={`/library?library=${library.id}`} className="library-card">
-      {cover != null && <img src={pageUrl(cover, 1)} alt="" loading="lazy" />}
+      {cover != null && !broken && <img src={coverUrl(cover)} alt="" loading="lazy" onError={() => setBroken(true)} />}
       <span>{library.name}</span>
     </Link>
   )
@@ -94,7 +96,7 @@ function ContinueCard({ book }: { book: Book }) {
   return (
     <Link to={`/read/${book.id}`} className="card continue-card">
       <div className="continue-thumb">
-        <Cover bookId={book.format === 'cbz' ? book.id : null} title={book.seriesName} />
+        <Cover bookId={hasCover(book) ? book.id : null} title={book.seriesName} />
         <div className="continue-progress">
           <div style={{ width: `${Math.max(progress, 0.02) * 100}%` }} />
         </div>

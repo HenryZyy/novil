@@ -1,5 +1,5 @@
 import { Link } from 'react-router'
-import { fileUrl, isReadable, type Book, type Series } from '../api/client'
+import { fileUrl, hasCover, isReadable, type Book, type Series } from '../api/client'
 import { plural } from '../format'
 import { Cover } from './Cover'
 import { Progress } from './Progress'
@@ -34,7 +34,7 @@ export function BookCard({ book, showSeries = false }: { book: Book; showSeries?
   const progress = book.completed ? 1 : total ? book.readPage / total : 0
   const content = (
     <>
-      <Cover bookId={book.format === 'cbz' ? book.id : null} title={book.title} />
+      <Cover bookId={hasCover(book) ? book.id : null} title={book.title} />
       <Progress value={progress} />
       <span className="card-title" title={book.title}>
         {showSeries ? book.seriesName : book.title}
