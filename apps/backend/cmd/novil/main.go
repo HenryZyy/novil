@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"novil/backend/internal/api"
+	"novil/backend/internal/auth"
 	"novil/backend/internal/config"
 	"novil/backend/internal/db"
 	"novil/backend/internal/store"
@@ -39,10 +40,19 @@ func run() error {
 		return err
 	}
 	defer database.Close()
+	st := store.New(database)
+
+	secret, err := auth.LoadSecret(cfg.JWTSecret, filepath.Join(cfg.DataDir, "jwt.key"))
+	if err != nil {
+		return fmt.Errorf("NOVIL_JWT_SECRET: %w", err)
+	}
+	if err := ensureAdmin(st, cfg); err != nil {
+		return err
+	}
 
 	srv := &http.Server{
 		Addr:              cfg.Addr,
-		Handler:           api.New(store.New(database)),
+		Handler:           api.New(st, auth.NewTokens(secret, tokenTTL), cfg.CORSOrigins),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
@@ -65,5 +75,38 @@ func run() error {
 		defer cancel()
 		return srv.Shutdown(shutdownCtx)
 	}
+	return nil
+}
+
+// tokenTTL is how long a login lasts before the user has to log in again.
+const tokenTTL = 7 * 24 * time.Hour
+
+// ensureAdmin creates the first admin from NOVIL_ADMIN_USER and
+// NOVIL_ADMIN_PASSWORD if there are no users yet, since only admins can
+// create accounts. Like every new user, they must change the password after
+// logging in.
+func ensureAdmin(st *store.Store, cfg config.Config) error {
+	n, err := st.CountUsers()
+	if err != nil || n > 0 {
+		return err
+	}
+	if cfg.AdminUser == "" || cfg.AdminPassword == "" {
+		return errors.New("there are no users yet: set NOVIL_ADMIN_USER and NOVIL_ADMIN_PASSWORD to create the first admin")
+	}
+	if err := auth.ValidateUsername(cfg.AdminUser); err != nil {
+		return fmt.Errorf("NOVIL_ADMIN_USER: %w", err)
+	}
+	if err := auth.ValidatePassword(cfg.AdminPassword); err != nil {
+		return fmt.Errorf("NOVIL_ADMIN_PASSWORD: %w", err)
+	}
+	hash, err := auth.HashPassword(cfg.AdminPassword)
+	if err != nil {
+		return err
+	}
+	admin, err := st.CreateUser(cfg.AdminUser, hash, store.RoleAdmin, true)
+	if err != nil {
+		return err
+	}
+	slog.Info("created first admin", "username", admin.Username)
 	return nil
 }

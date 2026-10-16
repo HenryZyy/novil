@@ -140,11 +140,12 @@ func (s *Store) GetBook(id int64) (Book, error) {
 	return b, notFound(err)
 }
 
-// GetProgress returns page 0 for a book that hasn't been opened yet.
-func (s *Store) GetProgress(bookID int64) (Progress, error) {
+// GetProgress returns the user's progress in a book, or page 0 if they
+// haven't opened it yet.
+func (s *Store) GetProgress(userID, bookID int64) (Progress, error) {
 	p := Progress{BookID: bookID}
 	var updated string
-	err := s.db.QueryRow(`SELECT page, completed, updated_at FROM progress WHERE book_id = ?`, bookID).
+	err := s.db.QueryRow(`SELECT page, completed, updated_at FROM progress WHERE user_id = ? AND book_id = ?`, userID, bookID).
 		Scan(&p.Page, &p.Completed, &updated)
 	if errors.Is(err, sql.ErrNoRows) {
 		return p, nil
@@ -156,13 +157,13 @@ func (s *Store) GetProgress(bookID int64) (Progress, error) {
 	return p, err
 }
 
-func (s *Store) SetProgress(p Progress) (Progress, error) {
+func (s *Store) SetProgress(userID int64, p Progress) (Progress, error) {
 	p.UpdatedAt = time.Now().UTC().Truncate(time.Second)
 	_, err := s.db.Exec(`
-		INSERT INTO progress (book_id, page, completed, updated_at) VALUES (?, ?, ?, ?)
-		ON CONFLICT (book_id) DO UPDATE SET
+		INSERT INTO progress (user_id, book_id, page, completed, updated_at) VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT (user_id, book_id) DO UPDATE SET
 			page = excluded.page, completed = excluded.completed, updated_at = excluded.updated_at`,
-		p.BookID, p.Page, p.Completed, p.UpdatedAt.Format(time.RFC3339))
+		userID, p.BookID, p.Page, p.Completed, p.UpdatedAt.Format(time.RFC3339))
 	return p, err
 }
 

@@ -14,33 +14,46 @@ import (
 	"strings"
 
 	"novil/backend/internal/archive"
+	"novil/backend/internal/auth"
 	"novil/backend/internal/scanner"
 	"novil/backend/internal/store"
 )
 
 type Server struct {
-	store *store.Store
+	store  *store.Store
+	tokens *auth.Tokens
 }
 
-func New(st *store.Store) http.Handler {
-	s := &Server{store: st}
+// New returns the API handler. corsOrigins are the browser origins allowed
+// to call it; see cors.
+func New(st *store.Store, tokens *auth.Tokens, corsOrigins []string) http.Handler {
+	s := &Server{store: st, tokens: tokens}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", s.health)
 
-	mux.HandleFunc("GET /api/libraries", s.listLibraries)
-	mux.HandleFunc("POST /api/libraries", s.createLibrary)
-	mux.HandleFunc("POST /api/libraries/{id}/scan", s.scanLibrary)
+	mux.HandleFunc("POST /api/auth/login", s.login)
+	mux.HandleFunc("GET /api/me", s.guard(pendingPassword, s.me))
+	mux.HandleFunc("PUT /api/me/password", s.guard(pendingPassword, s.changePassword))
 
-	mux.HandleFunc("GET /api/series", s.listSeries)
-	mux.HandleFunc("GET /api/series/{id}", s.getSeries)
-	mux.HandleFunc("GET /api/series/{id}/books", s.listBooks)
+	mux.HandleFunc("GET /api/users", s.guard(adminOnly, s.listUsers))
+	mux.HandleFunc("POST /api/users", s.guard(adminOnly, s.createUser))
+	mux.HandleFunc("PUT /api/users/{id}/password", s.guard(adminOnly, s.resetPassword))
+	mux.HandleFunc("DELETE /api/users/{id}", s.guard(adminOnly, s.deleteUser))
 
-	mux.HandleFunc("GET /api/books/{id}", s.getBook)
-	mux.HandleFunc("GET /api/books/{id}/file", s.getBookFile)
-	mux.HandleFunc("GET /api/books/{id}/pages/{page}", s.getPage)
-	mux.HandleFunc("GET /api/books/{id}/progress", s.getProgress)
-	mux.HandleFunc("PUT /api/books/{id}/progress", s.setProgress)
-	return mux
+	mux.HandleFunc("GET /api/libraries", s.guard(member, s.listLibraries))
+	mux.HandleFunc("POST /api/libraries", s.guard(adminOnly, s.createLibrary))
+	mux.HandleFunc("POST /api/libraries/{id}/scan", s.guard(adminOnly, s.scanLibrary))
+
+	mux.HandleFunc("GET /api/series", s.guard(member, s.listSeries))
+	mux.HandleFunc("GET /api/series/{id}", s.guard(member, s.getSeries))
+	mux.HandleFunc("GET /api/series/{id}/books", s.guard(member, s.listBooks))
+
+	mux.HandleFunc("GET /api/books/{id}", s.guard(member, s.getBook))
+	mux.HandleFunc("GET /api/books/{id}/file", s.guard(member, s.getBookFile))
+	mux.HandleFunc("GET /api/books/{id}/pages/{page}", s.guard(member, s.getPage))
+	mux.HandleFunc("GET /api/books/{id}/progress", s.guard(member, s.getProgress))
+	mux.HandleFunc("PUT /api/books/{id}/progress", s.guard(member, s.setProgress))
+	return cors(corsOrigins, mux)
 }
 
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
@@ -192,7 +205,7 @@ func (s *Server) getProgress(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	p, err := s.store.GetProgress(b.ID)
+	p, err := s.store.GetProgress(currentUser(r).ID, b.ID)
 	respond(w, p, err)
 }
 
@@ -213,7 +226,7 @@ func (s *Server) setProgress(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "page out of range")
 		return
 	}
-	p, err := s.store.SetProgress(store.Progress{BookID: b.ID, Page: req.Page, Completed: req.Completed})
+	p, err := s.store.SetProgress(currentUser(r).ID, store.Progress{BookID: b.ID, Page: req.Page, Completed: req.Completed})
 	respond(w, p, err)
 }
 
@@ -264,6 +277,12 @@ func internalError(w http.ResponseWriter, err error) {
 
 func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
+}
+
+// writeCodedError adds a machine-readable code that clients can check
+// instead of matching the message, e.g. "password_change_required".
+func writeCodedError(w http.ResponseWriter, status int, code, msg string) {
+	writeJSON(w, status, map[string]string{"error": msg, "code": code})
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
