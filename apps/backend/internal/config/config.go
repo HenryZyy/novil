@@ -35,6 +35,9 @@ type Config struct {
 	// of the server, e.g. "172.16.0.0/12". Their X-Forwarded-For header
 	// tells the client's real IP for the login rate limit.
 	TrustedProxies []string
+	// GoogleBooksKey makes ISBN lookups in Google Books reliable; without
+	// one, they share a small daily quota. Open Library needs no key.
+	GoogleBooksKey string
 }
 
 // LoadEnvFile sets the variables from a .env file at path. Variables that
@@ -64,6 +67,7 @@ func Load() (Config, error) {
 		AdminPassword:  os.Getenv("NOVIL_ADMIN_PASSWORD"),
 		CORSOrigins:    list(os.Getenv("NOVIL_CORS_ORIGINS")),
 		TrustedProxies: list(os.Getenv("NOVIL_TRUSTED_PROXIES")),
+		GoogleBooksKey: strings.TrimSpace(os.Getenv("NOVIL_GOOGLE_BOOKS_KEY")),
 	}, nil
 }
 

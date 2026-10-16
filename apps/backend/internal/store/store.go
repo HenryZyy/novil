@@ -38,6 +38,9 @@ type Series struct {
 	Progress   float64 `json:"progress"`
 	AddedAt    string  `json:"addedAt"`
 	LastReadAt *string `json:"lastReadAt"`
+	// The user's lists the series is on.
+	Favorite   bool `json:"favorite"`
+	WantToRead bool `json:"wantToRead"`
 }
 
 type Book struct {
@@ -159,7 +162,9 @@ var seriesSelect = `
 			WHEN b.page_count > 0 THEN MIN(COALESCE(p.page, 0) * 1.0 / b.page_count, 1.0)
 			ELSE MIN(COALESCE(p.page, 0) / 100.0, 1.0)
 		END) / COUNT(b.id), 0),
-		COALESCE(MAX(b.created_at), ''), MAX(p.updated_at)
+		COALESCE(MAX(b.created_at), ''), MAX(p.updated_at),
+		EXISTS (SELECT 1 FROM series_lists WHERE user_id = ?1 AND series_id = s.id AND list = 'favorites'),
+		EXISTS (SELECT 1 FROM series_lists WHERE user_id = ?1 AND series_id = s.id AND list = 'want')
 	FROM series s
 	LEFT JOIN books b ON b.series_id = s.id AND ` + visibleTo("b") + `
 	LEFT JOIN progress p ON p.book_id = b.id AND p.user_id = ?1
@@ -168,7 +173,7 @@ var seriesSelect = `
 func scanSeries(row interface{ Scan(...any) error }) (Series, error) {
 	var sr Series
 	err := row.Scan(&sr.ID, &sr.LibraryID, &sr.Name, &sr.BookCount, &sr.CoverBookID,
-		&sr.ReadCount, &sr.ReadingCount, &sr.HiddenCount, &sr.Progress, &sr.AddedAt, &sr.LastReadAt)
+		&sr.ReadCount, &sr.ReadingCount, &sr.HiddenCount, &sr.Progress, &sr.AddedAt, &sr.LastReadAt, &sr.Favorite, &sr.WantToRead)
 	return sr, err
 }
 
@@ -177,7 +182,10 @@ type SeriesQuery struct {
 	Search    string
 	// Status is "unread", "reading", "read" or empty for all.
 	Status string
-	// Sort is "added", "read" or empty for by name.
+	// List is "favorites" or "want" for only the series on that list of
+	// the user, or empty for all.
+	List string
+	// Sort is one of seriesSort's keys; empty is by name.
 	Sort string
 }
 
@@ -200,6 +208,8 @@ var seriesSort = map[string]string{
 	"released":     `MAX(` + released + `) IS NULL, MAX(` + released + `) DESC, s.name COLLATE NOCASE`,
 	"released-asc": `MIN(` + released + `) IS NULL, MIN(` + released + `), s.name COLLATE NOCASE`,
 	"read":         `MAX(p.updated_at) IS NULL, MAX(p.updated_at) DESC, s.name COLLATE NOCASE`,
+	// Recently put on the list in SeriesQuery.List (?4).
+	"listed": `(SELECT added_at FROM series_lists WHERE user_id = ?1 AND series_id = s.id AND list = ?4) DESC, s.name COLLATE NOCASE`,
 }
 
 // ValidSort reports whether sort is one ListSeries knows.
@@ -219,7 +229,8 @@ func (s *Store) ListSeries(userID int64, q SeriesQuery) ([]Series, error) {
 	}
 	rows, err := s.db.Query(seriesSelect+`
 		WHERE (?2 = 0 OR s.library_id = ?2) AND (?3 = '' OR instr(lower(s.name), lower(?3)) > 0)
-		GROUP BY s.id HAVING COUNT(b.id) > 0`+having+` ORDER BY `+order, userID, q.LibraryID, q.Search)
+		AND (?4 = '' OR EXISTS (SELECT 1 FROM series_lists WHERE user_id = ?1 AND series_id = s.id AND list = ?4))
+		GROUP BY s.id HAVING COUNT(b.id) > 0`+having+` ORDER BY `+order, userID, q.LibraryID, q.Search, q.List)
 	if err != nil {
 		return nil, err
 	}
@@ -429,6 +440,8 @@ type Stats struct {
 	Pages     int   `json:"pages"`
 	Size      int64 `json:"size"`
 	Users     int   `json:"users"`
+	// Requests are the book requests waiting for an admin.
+	Requests int `json:"requests"`
 }
 
 func (s *Store) Stats() (Stats, error) {
@@ -436,8 +449,8 @@ func (s *Store) Stats() (Stats, error) {
 	err := s.db.QueryRow(`
 		SELECT (SELECT COUNT(*) FROM libraries), (SELECT COUNT(*) FROM series),
 			COUNT(*), COALESCE(SUM(page_count), 0), COALESCE(SUM(size), 0),
-			(SELECT COUNT(*) FROM users)
-		FROM books`).Scan(&st.Libraries, &st.Series, &st.Books, &st.Pages, &st.Size, &st.Users)
+			(SELECT COUNT(*) FROM users), (SELECT COUNT(*) FROM book_requests WHERE status = 'open')
+		FROM books`).Scan(&st.Libraries, &st.Series, &st.Books, &st.Pages, &st.Size, &st.Users, &st.Requests)
 	return st, err
 }
 

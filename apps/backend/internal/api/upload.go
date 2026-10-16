@@ -105,6 +105,7 @@ func (s *Server) uploadBook(w http.ResponseWriter, r *http.Request) {
 		internalError(w, err)
 		return
 	}
+	s.audit(r, "book_uploaded", actor(r), "", book.SeriesName+" / "+filepath.Base(dest)+" to "+lib.Name)
 	writeJSON(w, http.StatusCreated, book)
 }
 

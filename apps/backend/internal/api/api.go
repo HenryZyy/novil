@@ -4,6 +4,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"mime"
@@ -12,6 +13,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -19,6 +21,7 @@ import (
 	"novil/backend/internal/archive"
 	"novil/backend/internal/auth"
 	"novil/backend/internal/cover"
+	"novil/backend/internal/isbn"
 	"novil/backend/internal/scanner"
 	"novil/backend/internal/store"
 )
@@ -27,6 +30,7 @@ type Server struct {
 	store          *store.Store
 	tokens         *auth.Tokens
 	loginLimiter   *limiter
+	lookupLimiter  *limiter
 	trustedProxies []netip.Prefix
 	opts           Options
 }
@@ -46,8 +50,14 @@ type Options struct {
 	// LoginInterval. Zero means 5 and 12s, so 5 per minute in the long run.
 	LoginBurst    int
 	LoginInterval time.Duration
+	// ISBN lookups call other services, so each IP may make LookupBurst at
+	// once, then one every 3 seconds. Zero means 10.
+	LookupBurst int
 	// Covers makes covers from book files. Nil means a new one.
 	Covers *cover.Generator
+	// LookupISBN finds the book of an ISBN for requests. Nil means none
+	// is ever found, so books can't be requested.
+	LookupISBN isbn.Lookup
 }
 
 // New returns the API handler.
@@ -58,6 +68,9 @@ func New(st *store.Store, tokens *auth.Tokens, opts Options) http.Handler {
 	if opts.LoginInterval == 0 {
 		opts.LoginInterval = 12 * time.Second
 	}
+	if opts.LookupBurst == 0 {
+		opts.LookupBurst = 10
+	}
 	if opts.Covers == nil {
 		opts.Covers = cover.NewGenerator()
 	}
@@ -65,6 +78,7 @@ func New(st *store.Store, tokens *auth.Tokens, opts Options) http.Handler {
 		store:          st,
 		tokens:         tokens,
 		loginLimiter:   newLimiter(opts.LoginInterval, opts.LoginBurst),
+		lookupLimiter:  newLimiter(3*time.Second, opts.LookupBurst),
 		trustedProxies: opts.TrustedProxies,
 		opts:           opts,
 	}
@@ -97,6 +111,8 @@ func New(st *store.Store, tokens *auth.Tokens, opts Options) http.Handler {
 	mux.HandleFunc("GET /api/series/{id}/books", s.guard(member, s.listBooks))
 	mux.HandleFunc("PUT /api/series/{id}/read", s.guard(member, s.setSeriesRead))
 	mux.HandleFunc("PATCH /api/series/{id}", s.guard(adminOnly, s.updateSeries))
+	mux.HandleFunc("PUT /api/series/{id}/lists/{list}", s.guard(member, s.setListed))
+	mux.HandleFunc("DELETE /api/series/{id}/lists/{list}", s.guard(member, s.setListed))
 	mux.HandleFunc("GET /api/continue", s.guard(member, s.continueReading))
 	mux.HandleFunc("GET /api/stats", s.guard(adminOnly, s.stats))
 
@@ -110,6 +126,23 @@ func New(st *store.Store, tokens *auth.Tokens, opts Options) http.Handler {
 	mux.HandleFunc("GET /api/books/{id}/pages/{page}", s.guard(member, s.getPage))
 	mux.HandleFunc("GET /api/books/{id}/progress", s.guard(member, s.getProgress))
 	mux.HandleFunc("PUT /api/books/{id}/progress", s.guard(member, s.setProgress))
+	mux.HandleFunc("GET /api/books/{id}/annotations", s.guard(member, s.listAnnotations))
+	mux.HandleFunc("POST /api/books/{id}/annotations", s.guard(member, s.createAnnotation))
+	mux.HandleFunc("PATCH /api/annotations/{id}", s.guard(member, s.updateAnnotation))
+	mux.HandleFunc("DELETE /api/annotations/{id}", s.guard(member, s.deleteAnnotation))
+
+	mux.HandleFunc("GET /api/isbn/{isbn}", s.guard(member, s.limitLookups(s.lookupISBN)))
+	mux.HandleFunc("POST /api/requests", s.guard(member, s.limitLookups(s.requestBook)))
+	mux.HandleFunc("GET /api/me/requests", s.guard(member, s.myRequests))
+	mux.HandleFunc("DELETE /api/me/requests/{id}", s.guard(member, s.withdrawRequest))
+	mux.HandleFunc("GET /api/requests", s.guard(adminOnly, s.listRequests))
+	mux.HandleFunc("PATCH /api/requests/{id}", s.guard(adminOnly, s.updateRequest))
+	mux.HandleFunc("DELETE /api/requests/{id}", s.guard(adminOnly, s.deleteRequest))
+
+	mux.HandleFunc("GET /api/logs", s.guard(adminOnly, s.listLog))
+	mux.HandleFunc("PUT /api/me/reading", s.guard(member, s.reading))
+	mux.HandleFunc("DELETE /api/me/reading", s.guard(member, s.stopReading))
+	mux.HandleFunc("GET /api/reading", s.guard(adminOnly, s.listReading))
 
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not found")
@@ -226,6 +259,9 @@ func (s *Server) scanLibrary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	result, err := s.store.SyncLibrary(lib.ID, found)
+	if err == nil {
+		s.audit(r, "library_scanned", actor(r), "", fmt.Sprintf("%s: %d series, %d books", lib.Name, result.Series, result.Books))
+	}
 	respond(w, result, err)
 }
 
@@ -235,6 +271,7 @@ func (s *Server) listSeries(w http.ResponseWriter, r *http.Request) {
 		Search: strings.TrimSpace(query.Get("search")),
 		Status: query.Get("status"),
 		Sort:   query.Get("sort"),
+		List:   query.Get("list"),
 	}
 	if v := query.Get("library"); v != "" {
 		id, err := strconv.ParseInt(v, 10, 64)
@@ -250,8 +287,12 @@ func (s *Server) listSeries(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "status must be unread, reading or read")
 		return
 	}
+	if q.List != "" && !slices.Contains(store.Lists, q.List) {
+		writeError(w, http.StatusBadRequest, "list must be favorites or want")
+		return
+	}
 	if !store.ValidSort(q.Sort) {
-		writeError(w, http.StatusBadRequest, "sort must be name-desc, added, added-asc, released, released-asc or read")
+		writeError(w, http.StatusBadRequest, "sort must be name-desc, added, added-asc, released, released-asc, read or listed")
 		return
 	}
 	series, err := s.store.ListSeries(currentUser(r).ID, q)

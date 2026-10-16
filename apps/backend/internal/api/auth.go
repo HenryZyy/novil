@@ -62,9 +62,15 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	// A missing user has an empty hash, which CheckPassword rejects as slowly
 	// as a wrong password. Both get the same answer.
 	if !auth.CheckPassword(user.PasswordHash, req.Password) {
+		var known *store.User
+		if user.ID != 0 {
+			known = &user
+		}
+		s.audit(r, "login_failed", known, strings.TrimSpace(req.Username), "")
 		writeCodedError(w, http.StatusUnauthorized, "invalid_credentials", "wrong username or password")
 		return
 	}
+	s.audit(r, "login", &user, "", "")
 	s.writeSession(w, r, user)
 }
 
@@ -76,6 +82,7 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 		internalError(w, err)
 		return
 	}
+	s.audit(r, "logout", actor(r), "", "")
 	clearTokenCookie(w)
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -118,5 +125,6 @@ func (s *Server) changePassword(w http.ResponseWriter, r *http.Request) {
 		respond(w, nil, err)
 		return
 	}
+	s.audit(r, "password_changed", &user, "", "")
 	s.writeSession(w, r, user)
 }

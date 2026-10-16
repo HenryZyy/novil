@@ -19,6 +19,7 @@ import (
 	"novil/backend/internal/config"
 	"novil/backend/internal/cover"
 	"novil/backend/internal/db"
+	"novil/backend/internal/isbn"
 	"novil/backend/internal/store"
 )
 
@@ -67,6 +68,7 @@ func run() error {
 		MaxUploadBytes: cfg.MaxUploadBytes,
 		CORSOrigins:    cfg.CORSOrigins,
 		TrustedProxies: proxies,
+		LookupISBN:     isbn.Online(cfg.GoogleBooksKey),
 	})
 	srv := &http.Server{
 		Addr:              cfg.Addr,

@@ -56,6 +56,7 @@ func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
 		internalError(w, err)
 		return
 	}
+	s.audit(r, "user_created", actor(r), "", "@"+user.Username+" ("+user.Role+")")
 	writeJSON(w, http.StatusCreated, user)
 }
 
@@ -83,6 +84,9 @@ func (s *Server) resetPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	user, err := s.store.SetPassword(id, hash, true)
+	if err == nil {
+		s.audit(r, "password_reset", actor(r), "", "@"+user.Username)
+	}
 	respond(w, user, err)
 }
 
@@ -124,10 +128,23 @@ func (s *Server) updateUser(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	before, _ := s.store.GetUser(id)
 	user, err := s.store.UpdateUser(id, req.Username, req.Role)
 	if errors.Is(err, store.ErrUsernameTaken) {
 		writeError(w, http.StatusConflict, "username is already taken")
 		return
+	}
+	if err == nil {
+		var changes []string
+		if user.Username != before.Username {
+			changes = append(changes, "@"+before.Username+" renamed to @"+user.Username)
+		}
+		if user.Role != before.Role {
+			changes = append(changes, "@"+user.Username+" is now "+user.Role)
+		}
+		if len(changes) > 0 {
+			s.audit(r, "user_updated", actor(r), "", strings.Join(changes, ", "))
+		}
 	}
 	respond(w, user, err)
 }
@@ -142,9 +159,11 @@ func (s *Server) deleteUser(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "you can't delete your own account")
 		return
 	}
+	deleted, _ := s.store.GetUser(id)
 	if err := s.store.DeleteUser(id); err != nil {
 		respond(w, nil, err)
 		return
 	}
+	s.audit(r, "user_deleted", actor(r), "", "@"+deleted.Username)
 	w.WriteHeader(http.StatusNoContent)
 }

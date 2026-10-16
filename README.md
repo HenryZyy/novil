@@ -87,7 +87,9 @@ a `code` to check instead of the message:
 | `POST /api/libraries/{id}/scan` | admin | Rescan a library's files |
 | `PATCH /api/libraries/{id}` | admin | `{"allowUploads": true}` turns uploads into this library on or off |
 | `POST /api/libraries/{id}/books?series=…&filename=…` | admin | Upload a book: the raw file as the body. Only `.cbz`, `.epub` and `.pdf`, and the content must really be that format |
-| `GET /api/series?library={id}` | user | List series, optionally of one library |
+| `GET /api/series?library={id}&list=…` | user | List series, optionally of one library or one of your lists (`favorites`, `want`) |
+| `PUT /api/series/{id}/lists/{list}` | user | Put a series on your `favorites` or `want` (want to read) list |
+| `DELETE /api/series/{id}/lists/{list}` | user | Take it off again |
 | `GET /api/series/{id}` | user | One series |
 | `GET /api/series/{id}/books` | user | The books in a series |
 | `PATCH /api/series/{id}` | admin | `{"hidden": true}` hides all its books, `false` shows them |
@@ -101,6 +103,21 @@ a `code` to check instead of the message:
 | `GET /api/books/{id}/pages/{n}` | user | Page `n` (from 1) of a CBZ as an image |
 | `GET /api/books/{id}/progress` | user | Your progress: `{"bookId", "page", "completed", "updatedAt"}` |
 | `PUT /api/books/{id}/progress` | user | `{"page", "completed"}` saves your progress |
+| `GET /api/books/{id}/annotations` | user | Your bookmarks and highlights in a book, see below |
+| `POST /api/books/{id}/annotations` | user | Add one |
+| `PATCH /api/annotations/{id}` | user | `{"note", "color"}` changes your annotation |
+| `DELETE /api/annotations/{id}` | user | Delete it |
+| `GET /api/isbn/{isbn}` | user | Look up a book to request, see below |
+| `POST /api/requests` | user | `{"isbn"}` requests a book |
+| `GET /api/me/requests` | user | The books you requested and what became of them |
+| `DELETE /api/me/requests/{id}` | user | Withdraw your request |
+| `GET /api/requests?status=…` | admin | All requests (`open`, `added` or `declined`), the most wanted first |
+| `PATCH /api/requests/{id}` | admin | `{"status": "added", "bookId"}`, `{"status": "declined"}` or back to `open` |
+| `DELETE /api/requests/{id}` | admin | Delete a request |
+| `GET /api/logs?event=…&search=…&before={id}` | admin | The activity log, newest first, 100 at a time, see below |
+| `PUT /api/me/reading` | user | `{"bookId"}`: you have this book open, see below |
+| `DELETE /api/me/reading` | user | You closed it |
+| `GET /api/reading` | admin | Who is reading what right now |
 
 ¹ Also works while the user still has to change their password.
 
@@ -135,6 +152,58 @@ Admins can hide a book from everyone else with `PATCH /api/books/{id}`
 don't see hidden books anywhere and get `404` for them; a series whose books
 are all hidden is gone for them too. Admins still see everything: books carry
 `hidden`, and series `hiddenCount`. Scans keep books hidden.
+
+### Lists, bookmarks and highlights
+
+Each user has two series lists, favorites and want to read; series carry
+`favorite` and `wantToRead` for them. `sort=listed` puts the most recently
+listed first.
+
+Annotations are private to their user. A bookmark (`"kind": "bookmark"`)
+marks a page of a comic or a point in an EPUB; a highlight (`"highlight"`,
+EPUBs only) marks a range of text. Both can have a `note`.
+
+```json
+{"kind": "highlight", "page": 13, "position": "epubcfi(/6/16!/4/2/4,/3:0,/3:60)",
+ "text": "the highlighted text", "note": "", "color": "yellow"}
+```
+
+`page` is the comic's page, or how far into an EPUB it is in percent.
+`position` is the EPUB CFI, empty for comics. `color` is `yellow`, `green`,
+`blue`, `pink` or `purple`.
+
+### Book requests
+
+Users ask for missing books by ISBN (ISBN-10 or -13, with or without
+hyphens). `GET /api/isbn/{isbn}` checks the check digit, so typos answer
+`400` with code `invalid_isbn`, then looks the book up in Open Library and
+Google Books: `{"book": {isbn, title, authors, published, coverUrl, pages},
+"request": …}`. `404` (`isbn_not_found`) means neither knows it, and `502`
+(`lookup_failed`) that they can't be reached. Lookups are rate limited per
+IP.
+
+Each book is requested once: asking for a book someone else asked for adds
+you to their request (`requestCount`), and asking twice answers `409`
+(`already_requested`, or `already_added` once it's in the library). Admins
+see who asked (`requesters`). Withdrawing the last request of an open book
+deletes it; asking for a declined book opens it again.
+
+Google Books shares a small daily quota between everyone without an API
+key; set `NOVIL_GOOGLE_BOOKS_KEY` for reliable lookups.
+
+### Activity
+
+The server logs logins (`login`, `login_failed`), `logout`,
+`password_changed` and admin actions (`user_created`, `user_updated`,
+`user_deleted`, `password_reset`, `book_uploaded`, `library_scanned`,
+`request_updated`), each with the user, IP and device, read from the
+User-Agent (`deviceKind`: `phone`, `tablet` or `desktop`; `device` like
+`Firefox on Windows`). It keeps 90 days. Filter with a comma-separated
+`event` list and `search`; for older entries, pass the last ID as `before`.
+
+Readers send `PUT /api/me/reading` when a book opens and every minute while
+it's shown, and `DELETE` when it closes. `GET /api/reading` lists those
+reported in the last 3 minutes, with each book as its reader sees it.
 
 ### Covers
 

@@ -80,6 +80,8 @@ type client struct {
 	t     *testing.T
 	srv   *httptest.Server
 	token string
+	// userAgent is sent as the User-Agent header, if set.
+	userAgent string
 }
 
 func (c *client) request(method, path, body string) *http.Response {
@@ -90,6 +92,9 @@ func (c *client) request(method, path, body string) *http.Response {
 	}
 	if c.token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
+	if c.userAgent != "" {
+		req.Header.Set("User-Agent", c.userAgent)
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
