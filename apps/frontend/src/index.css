@@ -1335,3 +1335,134 @@ button:not(:disabled):active,
   stroke-linecap: round;
   stroke-linejoin: round;
 }
+
+/* Series details */
+
+.series-facts {
+  margin: 0 0 0.25rem;
+  font-weight: 500;
+}
+
+.series-description {
+  max-width: 65ch;
+  margin-top: 0.75rem;
+}
+
+.series-description p {
+  margin: 0;
+  white-space: pre-line;
+}
+
+.series-description .clamped {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.link-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .link-button:hover {
+    background-image: none;
+    text-decoration: underline;
+  }
+}
+
+/* The edit button sits on the card's cover, beside (not inside) its link. */
+.card-wrap {
+  position: relative;
+}
+
+.card-edit {
+  position: absolute;
+  top: 0.4rem;
+  right: 0.4rem;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgb(0 0 0 / 0.6);
+  color: #fff;
+}
+
+@media (hover: hover) {
+  .card-edit {
+    opacity: 0;
+  }
+
+  .card-wrap:hover .card-edit,
+  .card-edit:focus-visible {
+    opacity: 1;
+  }
+
+  .card-wrap:hover .card {
+    transform: translateY(-4px);
+  }
+
+  .card-wrap:hover .card-edit {
+    transform: translateY(-4px);
+  }
+}
+
+.dialog {
+  width: min(520px, calc(100vw - 2rem));
+  max-height: calc(100dvh - 2rem);
+  padding: 1.5rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--fg);
+}
+
+.dialog::backdrop {
+  background: rgb(0 0 0 / 0.4);
+}
+
+.dialog .form {
+  max-width: none;
+  margin: 0;
+}
+
+.dialog h2 {
+  margin: 0;
+}
+
+.dialog .muted {
+  margin: -0.5rem 0 0;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.field-label {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+}
+
+textarea {
+  font: inherit;
+  padding: 0.4rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: inherit;
+  resize: vertical;
+}

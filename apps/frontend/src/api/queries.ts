@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
-import { api, ApiError, type SeriesQuery } from './client'
+import { api, ApiError, type MetadataField, type SeriesQuery } from './client'
 
 // The logged-in user, or null when nobody is.
 export const useMe = () =>
@@ -76,6 +76,11 @@ export const useSetSeriesRead = () =>
   useInvalidatingMutation(({ id, read }: { id: number; read: boolean }) => api.setSeriesRead(id, read))
 
 export const useCreateUser = () => useInvalidatingMutation(api.createUser)
+
+export const useUpdateBook = () =>
+  useInvalidatingMutation(({ id, changes }: { id: number; changes: Partial<Record<MetadataField, string | null>> }) =>
+    api.updateBook(id, changes),
+  )
 
 export const useResetPassword = () =>
   useInvalidatingMutation(({ id, password }: { id: number; password: string }) => api.resetPassword(id, password))

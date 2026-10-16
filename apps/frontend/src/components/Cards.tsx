@@ -27,7 +27,7 @@ function status(book: Book) {
   return book.readPage > 0 ? `Page ${book.readPage} / ${book.pageCount}` : plural(book.pageCount, 'page')
 }
 
-export function BookCard({ book, showSeries = false, rowId }: { book: Book; showSeries?: boolean; rowId?: string }) {
+export function BookCard({ book, showSeries = false }: { book: Book; showSeries?: boolean }) {
   const readable = isReadable(book)
   // EPUBs store the percentage read instead of a page.
   const total = book.format === 'epub' ? 100 : book.pageCount
@@ -43,11 +43,11 @@ export function BookCard({ book, showSeries = false, rowId }: { book: Book; show
     </>
   )
   return readable ? (
-    <Link to={`/read/${book.id}`} className="card" data-row-id={rowId}>
+    <Link to={`/read/${book.id}`} className="card">
       {content}
     </Link>
   ) : (
-    <a href={fileUrl(book.id)} className="card" data-row-id={rowId}>
+    <a href={fileUrl(book.id)} className="card">
       {content}
     </a>
   )

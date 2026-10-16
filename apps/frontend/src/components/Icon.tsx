@@ -34,6 +34,7 @@ const paths = {
       <path d="m20 20-4-4" />
     </>
   ),
+  edit: <path d="M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4" />,
   minus: <path d="M5 12h14" />,
   plus: <path d="M12 5v14M5 12h14" />,
   palette: (

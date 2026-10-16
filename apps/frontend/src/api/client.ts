@@ -53,7 +53,19 @@ export type Book = {
   readPage: number
   readPosition: string
   completed: boolean
+  // When the book was uploaded or first found by a scan.
+  addedAt: string
+  // From the file, or set by an admin; edited lists the fields an admin set.
+  author: string
+  language: string
+  // "2006", "2006-01" or "2006-01-02", or empty.
+  released: string
+  description: string
+  edited: MetadataField[]
 }
+
+export const metadataFields = ['title', 'author', 'language', 'released', 'description'] as const
+export type MetadataField = (typeof metadataFields)[number]
 
 export type ScanResult = {
   series: number
@@ -120,6 +132,9 @@ export const api = {
   continueReading: () => request<Book[]>('/api/continue'),
   books: (seriesId: number) => request<Book[]>(`/api/series/${seriesId}/books`),
   book: (id: number) => request<Book>(`/api/books/${id}`),
+  // A string replaces the file's value, null goes back to it.
+  updateBook: (id: number, changes: Partial<Record<MetadataField, string | null>>) =>
+    request<Book>(`/api/books/${id}`, json('PATCH', changes)),
 
   uploadBook: (libraryId: number, series: string, file: File) =>
     request<Book>(`/api/libraries/${libraryId}/books?${new URLSearchParams({ series, filename: file.name })}`, {

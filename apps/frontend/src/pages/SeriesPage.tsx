@@ -1,10 +1,13 @@
+import { useState } from 'react'
 import { Link, useParams } from 'react-router'
 import { isAdmin, useBooks, useCurrentUser, useLibraries, useSeries, useSetSeriesRead } from '../api/queries'
-import { isReadable } from '../api/client'
+import { isReadable, type Book } from '../api/client'
 import { BookCard } from '../components/Cards'
 import { Row } from '../components/Row'
 import { plural } from '../format'
 import { Cover } from '../components/Cover'
+import { EditBookDialog } from '../components/EditBookDialog'
+import { Icon } from '../components/Icon'
 
 export function SeriesPage() {
   const seriesId = Number(useParams().seriesId)
@@ -13,6 +16,8 @@ export function SeriesPage() {
   const libraries = useLibraries()
   const user = useCurrentUser()
   const setRead = useSetSeriesRead()
+  const [editing, setEditing] = useState<Book | null>(null)
+  const [expanded, setExpanded] = useState(false)
 
   if (series.isPending || books.isPending) return <p>Loading…</p>
   if (series.isError) return <p className="error">{series.error.message}</p>
@@ -22,6 +27,7 @@ export function SeriesPage() {
   const next = books.data.find((b) => isReadable(b) && !b.completed)
   const allRead = s.bookCount > 0 && s.readCount === s.bookCount
   const canUpload = isAdmin(user) && libraries.data?.some((l) => l.id === s.libraryId && l.allowUploads)
+  const details = seriesDetails(books.data)
 
   return (
     <>
@@ -31,9 +37,20 @@ export function SeriesPage() {
         </div>
         <div>
           <h1>{s.name}</h1>
+          {details.facts.length > 0 && <p className="series-facts">{details.facts.join(' · ')}</p>}
           <p className="muted">
             {plural(s.bookCount, 'book')} · {s.readCount} read
           </p>
+          {details.description && (
+            <div className="series-description">
+              <p className={expanded ? '' : 'clamped'}>{details.description}</p>
+              {details.description.length > 280 && (
+                <button className="link-button" onClick={() => setExpanded((e) => !e)}>
+                  {expanded ? 'Less' : 'More'}
+                </button>
+              )}
+            </div>
+          )}
           <p className="actions">
             {next && (
               <Link to={`/read/${next.id}`} className="button primary">
@@ -54,9 +71,40 @@ export function SeriesPage() {
       </div>
       <Row scrollTo={next ? String(next.id) : undefined}>
         {books.data.map((book) => (
-          <BookCard key={book.id} book={book} rowId={String(book.id)} />
+          <div key={book.id} className="card-wrap" data-row-id={book.id}>
+            <BookCard book={book} />
+            {isAdmin(user) && (
+              <button className="card-edit" onClick={() => setEditing(book)} aria-label={`Edit details of ${book.title}`} title="Edit details">
+                <Icon name="edit" size={16} />
+              </button>
+            )}
+          </div>
         ))}
       </Row>
+      {editing && <EditBookDialog key={editing.id} book={editing} onClose={() => setEditing(null)} />}
     </>
   )
+}
+
+// What the books say about the series: their authors, release years and
+// languages, and the first description.
+function seriesDetails(books: Book[]) {
+  const unique = (values: string[]) => [...new Set(values.filter(Boolean))]
+  const authors = unique(books.map((b) => b.author))
+  const years = unique(books.map((b) => b.released.slice(0, 4))).sort()
+  const languages = unique(books.map((b) => b.language))
+  const facts = [
+    authors.length > 2 ? `${authors.slice(0, 2).join(', ')} and others` : authors.join(', '),
+    years.length > 1 ? `${years[0]}–${years[years.length - 1]}` : years[0],
+    languages.map(languageName).join(', '),
+  ].filter(Boolean) as string[]
+  return { facts, description: books.find((b) => b.description)?.description ?? '' }
+}
+
+function languageName(code: string) {
+  try {
+    return new Intl.DisplayNames(undefined, { type: 'language' }).of(code) ?? code
+  } catch {
+    return code
+  }
 }
