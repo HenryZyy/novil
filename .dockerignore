@@ -1,0 +1,10 @@
+.git
+.vscode
+
+**/.env
+**/.env.*
+
+config
+library
+apps/backend/data
+apps/backend/novil
