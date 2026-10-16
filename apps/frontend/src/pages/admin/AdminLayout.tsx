@@ -25,8 +25,14 @@ export function AdminLayout() {
         <Item to="/admin/books" icon="book">
           Books
         </Item>
+        <Item to="/admin/requests" icon="request">
+          Requests
+        </Item>
         <Item to="/admin/users" icon="users">
           Users
+        </Item>
+        <Item to="/admin/logs" icon="log">
+          Logs
         </Item>
       </nav>
       <div className="admin-content">

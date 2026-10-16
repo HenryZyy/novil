@@ -207,6 +207,24 @@ button:disabled {
   mask: url('/logo.svg') center / contain no-repeat;
 }
 
+.list-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.list-toggle.icon-button {
+  justify-content: center;
+  width: 2.5rem;
+  padding: 0;
+}
+
+.list-toggle.on {
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
 /* Hamburger menu: a drawer under the navbar, like Jellyfin's. */
 
 .menu-button {
@@ -655,8 +673,35 @@ button:disabled {
 }
 
 .row {
+  --thumb: transparent;
   scroll-behavior: smooth;
   scrollbar-width: thin;
+  scrollbar-color: var(--thumb) transparent;
+}
+
+/* The scrollbar only shows while the row is in use; the arrows and
+   swiping do the rest. */
+.row-wrap:hover .row,
+.row:focus-within {
+  --thumb: color-mix(in srgb, var(--fg) 22%, transparent);
+}
+
+.row-wrap .row:hover {
+  --thumb: color-mix(in srgb, var(--fg) 35%, transparent);
+}
+
+/* Safari ignores scrollbar-color. */
+.row::-webkit-scrollbar {
+  height: 6px;
+}
+
+.row::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.row::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: var(--thumb);
 }
 
 @media (max-width: 600px) {
@@ -977,6 +1022,388 @@ button:disabled {
 
 .admin-content > :first-child {
   margin-top: 0;
+}
+
+/* The whole card is the link. */
+.stat-link {
+  position: relative;
+  transition: border-color var(--fast) var(--ease);
+}
+
+.stat-link a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.stat-link a::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+}
+
+.stat-link:hover {
+  border-color: var(--accent);
+}
+
+/* Reading now, in the dashboard */
+
+.reading-now h2 {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.live-dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: #2e9d57;
+  box-shadow: 0 0 0 0 rgb(46 157 87 / 0.5);
+  animation: live 2s infinite;
+}
+
+@keyframes live {
+  70% {
+    box-shadow: 0 0 0 8px rgb(46 157 87 / 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgb(46 157 87 / 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-dot {
+    animation: none;
+  }
+}
+
+.reading-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.reading-item {
+  display: flex;
+  gap: 0.85rem;
+  min-width: 0;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+}
+
+.reading-cover {
+  flex-shrink: 0;
+  width: 3.5rem;
+}
+
+.reading-cover .cover {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 2 / 3;
+  border-radius: 4px;
+  object-fit: cover;
+  font-size: 1.2rem;
+}
+
+.reading-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.reading-user {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.reading-book {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.9rem;
+}
+
+.reading-progress {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.reading-progress .progress {
+  flex: 1;
+  margin: 0;
+}
+
+.reading-progress .muted,
+.reading-meta {
+  font-size: 0.8rem;
+}
+
+.reading-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.75rem;
+}
+
+.device {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  white-space: nowrap;
+}
+
+.device .icon {
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
+/* Logs */
+
+.log-table td {
+  vertical-align: top;
+}
+
+.log-when {
+  display: flex;
+  flex-direction: column;
+  white-space: nowrap;
+}
+
+.log-when .muted {
+  font-size: 0.75rem;
+}
+
+.log-event {
+  display: inline-block;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--fg) 7%, transparent);
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.log-event.login {
+  background: color-mix(in srgb, #2e9d57 16%, transparent);
+  color: color-mix(in srgb, #2e9d57 80%, var(--fg));
+}
+
+.log-event.login_failed {
+  background: color-mix(in srgb, var(--error) 14%, transparent);
+  color: var(--error);
+}
+
+.log-event.user_deleted,
+.log-event.password_reset {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.log-detail {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+.log-table code {
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+/* Book requests */
+
+.notice {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0.85rem;
+  border-radius: 8px;
+  background: var(--accent-soft);
+  color: var(--fg);
+}
+
+.notice .icon {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+.small {
+  font-size: 0.85rem;
+}
+
+.request-intro {
+  max-width: 640px;
+}
+
+.isbn-form {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.isbn-form .search {
+  flex: 1;
+}
+
+.isbn-form button {
+  height: 2.5rem;
+  border-radius: 999px;
+}
+
+.isbn-result {
+  display: flex;
+  gap: 1.25rem;
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  animation: dropdown-in 0.15s var(--ease);
+}
+
+.isbn-result .cover {
+  flex-shrink: 0;
+  width: 6rem;
+  height: auto;
+  aspect-ratio: 2 / 3;
+  border-radius: 6px;
+  object-fit: cover;
+}
+
+.isbn-result h3 {
+  margin: 0 0 0.25rem;
+}
+
+.isbn-result p {
+  margin: 0 0 0.5rem;
+}
+
+.request-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  list-style: none;
+  overflow: hidden;
+}
+
+.request-item {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+}
+
+.request-item + .request-item {
+  border-top: 1px solid var(--line);
+}
+
+.request-item .cover {
+  flex-shrink: 0;
+  width: 3rem;
+  height: auto;
+  aspect-ratio: 2 / 3;
+  border-radius: 4px;
+  object-fit: cover;
+  font-size: 1.1rem;
+}
+
+.request-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.request-info > strong,
+.request-info > .muted {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.request-info > .muted {
+  font-size: 0.875rem;
+}
+
+.request-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.6rem;
+  margin-top: 0.2rem;
+  font-size: 0.8rem;
+}
+
+.request-status {
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.request-status.open {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.request-status.added {
+  background: color-mix(in srgb, #2e9d57 16%, transparent);
+  color: color-mix(in srgb, #2e9d57 80%, var(--fg));
+}
+
+.request-status.declined {
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+  color: var(--muted);
+}
+
+.request-count {
+  font-weight: 600;
+}
+
+.request-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.4rem;
+}
+
+.request-actions > *,
+.request-item > .button,
+.request-item > button {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  height: 2.25rem;
+  padding: 0 0.85rem;
+  font-size: 0.875rem;
+}
+
+@media (max-width: 640px) {
+  .request-item {
+    flex-wrap: wrap;
+  }
+
+  .request-actions {
+    flex-basis: 100%;
+    justify-content: flex-start;
+    padding-left: 4rem;
+  }
+
+  .isbn-result .cover {
+    width: 4.5rem;
+  }
 }
 
 /* Dashboard books */
@@ -1643,6 +2070,222 @@ td {
   font-weight: 500;
 }
 
+/* Bookmarks and highlights */
+
+.bookmark-button.on {
+  color: var(--accent);
+}
+
+.annotation-empty {
+  margin: 0.25rem 1.25rem 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.annotation-empty .icon {
+  vertical-align: -2px;
+}
+
+.annotation-list {
+  margin: 0.25rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.annotation-item {
+  position: relative;
+  padding: 0.5rem 1.25rem 0.6rem;
+}
+
+.annotation-item + .annotation-item {
+  border-top: 1px solid var(--reader-border);
+}
+
+.annotation-go {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  width: 100%;
+  padding: 0 4.5rem 0 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+}
+
+.annotation-where {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.annotation-where .icon {
+  color: var(--accent);
+}
+
+.annotation-quote,
+.annotation-excerpt {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.annotation-quote {
+  padding-left: 0.6rem;
+  border-left: 3px solid var(--line);
+  font-style: italic;
+}
+
+.annotation-excerpt {
+  color: var(--muted);
+}
+
+.annotation-go:hover .annotation-quote,
+.annotation-go:hover .annotation-excerpt {
+  color: var(--accent);
+}
+
+.annotation-note {
+  margin: 0.4rem 0 0;
+  padding: 0.45rem 0.6rem;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  font-size: 0.85rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.annotation-actions {
+  position: absolute;
+  top: 0.25rem;
+  right: 0.75rem;
+  display: flex;
+}
+
+.annotation-actions .reader-icon {
+  width: 2rem;
+  height: 2rem;
+  color: var(--muted);
+}
+
+.annotation-actions .reader-icon:hover {
+  color: var(--fg);
+}
+
+.color-dot {
+  width: 0.65rem;
+  height: 0.65rem;
+  border-radius: 50%;
+}
+
+.swatches {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.swatches button {
+  width: 1.6rem;
+  height: 1.6rem;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.15);
+  transition: transform var(--fast) var(--ease);
+}
+
+.swatches button:hover {
+  transform: scale(1.12);
+}
+
+.swatches button[aria-checked='true'] {
+  border-color: var(--fg);
+}
+
+.note-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+}
+
+.note-editor textarea {
+  width: 100%;
+  min-height: 4.5rem;
+  resize: vertical;
+  font: inherit;
+  font-size: 0.875rem;
+}
+
+.note-editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.4rem;
+}
+
+.note-editor-actions button {
+  height: 2rem;
+  padding: 0 0.85rem;
+  font-size: 0.85rem;
+}
+
+.highlight-popup {
+  position: fixed;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  max-width: min(320px, calc(100vw - 16px));
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--fg);
+  box-shadow: 0 10px 30px -10px rgb(0 0 0 / 0.4);
+  animation: dropdown-in 0.12s var(--ease);
+}
+
+.highlight-popup.editing,
+.highlight-popup:has(.highlight-popup-note) {
+  border-radius: 12px;
+}
+
+.highlight-popup.editing {
+  width: min(320px, calc(100vw - 16px));
+  padding: 0.5rem;
+}
+
+.highlight-popup.editing .note-editor {
+  width: 100%;
+  margin: 0;
+}
+
+.highlight-popup .reader-icon {
+  width: 2rem;
+  height: 2rem;
+}
+
+.highlight-popup-divider {
+  width: 1px;
+  height: 1.25rem;
+  margin: 0 0.15rem;
+  background: var(--line);
+}
+
+.highlight-popup-note {
+  flex-basis: 100%;
+  margin: 0.15rem 0.25rem 0.1rem;
+  font-size: 0.85rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .reader-menu-hint {
   margin: 1.25rem 1.25rem 0;
   color: var(--muted);
@@ -1796,6 +2439,10 @@ button:not(:disabled):active,
   stroke-linejoin: round;
 }
 
+.icon.filled {
+  fill: currentColor;
+}
+
 /* Series details */
 
 .series-facts {
@@ -1837,12 +2484,13 @@ button:not(:disabled):active,
   }
 }
 
-/* The edit button sits on the card's cover, beside (not inside) its link. */
+/* The ⋮ button sits on the card's cover, beside (not inside) its link. */
 .card-wrap {
   position: relative;
+  min-width: 0;
 }
 
-.card-edit {
+.card-menu-button {
   position: absolute;
   top: 0.4rem;
   right: 0.4rem;
@@ -1855,17 +2503,28 @@ button:not(:disabled):active,
   padding: 0;
   border: 0;
   border-radius: 50%;
-  background: rgb(0 0 0 / 0.6);
+  background: rgb(0 0 0 / 0.55);
   color: #fff;
+  backdrop-filter: blur(4px);
+  transition:
+    opacity var(--fast) var(--ease),
+    transform var(--fast) var(--ease),
+    background-color var(--fast) var(--ease);
+}
+
+.card-menu-button:hover,
+.card-menu-button.open {
+  background: rgb(0 0 0 / 0.75);
 }
 
 @media (hover: hover) {
-  .card-edit {
+  .card-menu-button {
     opacity: 0;
   }
 
-  .card-wrap:hover .card-edit,
-  .card-edit:focus-visible {
+  .card-wrap:hover .card-menu-button,
+  .card-menu-button:focus-visible,
+  .card-menu-button.open {
     opacity: 1;
   }
 
@@ -1873,9 +2532,66 @@ button:not(:disabled):active,
     transform: translateY(-4px);
   }
 
-  .card-wrap:hover .card-edit {
+  .card-wrap:hover .card .cover {
+    box-shadow: var(--lift-shadow);
+  }
+
+  .card-wrap:hover .card-menu-button {
     transform: translateY(-4px);
   }
+}
+
+.card-menu {
+  position: fixed;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  min-width: 220px;
+  max-width: calc(100vw - 16px);
+  padding: 0.4rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--fg);
+  box-shadow: 0 12px 32px -10px rgb(0 0 0 / 0.35);
+  animation: dropdown-in 0.12s var(--ease);
+}
+
+.card-menu [role='menuitem'] {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  min-height: 2.6rem;
+  padding: 0 0.85rem;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--fg);
+  font-size: 0.95rem;
+  text-align: left;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.card-menu [role='menuitem'] .icon {
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
+.card-menu [role='menuitem']:hover,
+.card-menu [role='menuitem']:focus-visible {
+  background: color-mix(in srgb, var(--fg) 7%, transparent);
+  outline: none;
+}
+
+.card-menu [role='menuitem'].danger {
+  color: var(--error);
+}
+
+.card-menu-divider {
+  height: 1px;
+  margin: 0.3rem 0.5rem;
+  background: var(--line);
 }
 
 .dialog {

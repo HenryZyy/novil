@@ -19,14 +19,21 @@ export type Series = {
   progress: number
   addedAt: string
   lastReadAt: string | null
+  // The user's lists the series is on.
+  favorite: boolean
+  wantToRead: boolean
 }
 
-export type SeriesSort = '' | 'name-desc' | 'added' | 'added-asc' | 'released' | 'released-asc' | 'read'
+export type SeriesList = 'favorites' | 'want'
+
+// "listed" is the most recently put on the list in SeriesQuery.list first.
+export type SeriesSort = '' | 'name-desc' | 'added' | 'added-asc' | 'released' | 'released-asc' | 'read' | 'listed'
 
 export type SeriesQuery = {
   library?: number
   search?: string
   status?: '' | 'unread' | 'reading' | 'read'
+  list?: '' | SeriesList
   sort?: SeriesSort
 }
 
@@ -49,6 +56,8 @@ export type Stats = {
   pages: number
   size: number
   users: number
+  // Book requests waiting for an admin.
+  requests: number
 }
 
 export type Book = {
@@ -82,6 +91,98 @@ export type BookQuery = {
   search?: string
   hidden?: '' | 'hidden' | 'visible'
 }
+
+export type Annotation = {
+  id: number
+  bookId: number
+  kind: 'bookmark' | 'highlight'
+  // The page of a comic, or the percentage read of an EPUB.
+  page: number
+  // The EPUB CFI: a point for bookmarks, a range for highlights.
+  position: string
+  // The highlighted text, or the start of the page for a bookmark.
+  text: string
+  note: string
+  color: '' | HighlightColor
+  createdAt: string
+  updatedAt: string
+}
+
+// What an ISBN lookup found.
+export type IsbnBook = {
+  isbn: string
+  title: string
+  authors: string
+  // A year, or a date as the source writes it.
+  published: string
+  coverUrl: string
+  pages: number
+}
+
+export type BookRequest = {
+  id: number
+  isbn: string
+  title: string
+  authors: string
+  published: string
+  coverUrl: string
+  // "added" means an admin added the book; bookId is it, if they said which.
+  status: 'open' | 'added' | 'declined'
+  bookId: number | null
+  createdAt: string
+  updatedAt: string
+  // How many users asked for it, and whether you did, and when.
+  requestCount: number
+  requestedByMe: boolean
+  requestedAt: string | null
+  // Who asked, for admins only.
+  requesters?: string[]
+}
+
+export type DeviceKind = '' | 'phone' | 'tablet' | 'desktop'
+
+export type LogEvent =
+  | 'login'
+  | 'login_failed'
+  | 'logout'
+  | 'password_changed'
+  | 'user_created'
+  | 'user_updated'
+  | 'user_deleted'
+  | 'password_reset'
+  | 'book_uploaded'
+  | 'library_scanned'
+  | 'request_updated'
+
+export type LogEntry = {
+  id: number
+  at: string
+  event: LogEvent
+  // Who did it; for a failed login the name tried. userId is null when no
+  // such user exists (any more).
+  userId: number | null
+  username: string
+  ip: string
+  deviceKind: DeviceKind
+  // E.g. "Firefox on Windows".
+  device: string
+  // What it was about, e.g. the user who was deleted.
+  detail: string
+}
+
+export type ReadingSession = {
+  user: Pick<User, 'id' | 'username' | 'hasAvatar' | 'avatarUpdatedAt'>
+  // As the reader sees it, with their progress.
+  book: Book
+  ip: string
+  deviceKind: DeviceKind
+  device: string
+  startedAt: string
+  lastSeen: string
+}
+
+export const highlightColors = ['yellow', 'green', 'blue', 'pink', 'purple'] as const
+export type HighlightColor = (typeof highlightColors)[number]
 
 export const metadataFields = ['title', 'author', 'language', 'released', 'description'] as const
 export type MetadataField = (typeof metadataFields)[number]
@@ -153,6 +254,8 @@ export const api = {
   },
   series: (id: number) => request<Series>(`/api/series/${id}`),
   setSeriesRead: (id: number, read: boolean) => request<Series>(`/api/series/${id}/read`, json('PUT', { read })),
+  setListed: (id: number, list: SeriesList, listed: boolean) =>
+    request<Series>(`/api/series/${id}/lists/${list}`, { method: listed ? 'PUT' : 'DELETE' }),
   continueReading: () => request<Book[]>('/api/continue'),
   setSeriesHidden: (id: number, hidden: boolean) => request<Series>(`/api/series/${id}`, json('PATCH', { hidden })),
   searchBooks: (query: BookQuery = {}) => {
@@ -168,6 +271,34 @@ export const api = {
   // A string replaces the file's value, null goes back to it.
   updateBook: (id: number, changes: Partial<Record<MetadataField, string | null>>) =>
     request<Book>(`/api/books/${id}`, json('PATCH', changes)),
+
+  annotations: (bookId: number) => request<Annotation[]>(`/api/books/${bookId}/annotations`),
+  createAnnotation: (bookId: number, a: Pick<Annotation, 'kind' | 'page'> & Partial<Pick<Annotation, 'position' | 'text' | 'note' | 'color'>>) =>
+    request<Annotation>(`/api/books/${bookId}/annotations`, json('POST', a)),
+  updateAnnotation: (id: number, changes: Partial<Pick<Annotation, 'note' | 'color'>>) =>
+    request<Annotation>(`/api/annotations/${id}`, json('PATCH', changes)),
+  deleteAnnotation: (id: number) => request<void>(`/api/annotations/${id}`, { method: 'DELETE' }),
+
+  lookupIsbn: (isbn: string) =>
+    request<{ book: IsbnBook; request: BookRequest | null }>(`/api/isbn/${encodeURIComponent(isbn)}`),
+  requestBook: (isbn: string) => request<BookRequest>('/api/requests', json('POST', { isbn })),
+  myRequests: () => request<BookRequest[]>('/api/me/requests'),
+  withdrawRequest: (id: number) => request<void>(`/api/me/requests/${id}`, { method: 'DELETE' }),
+  requests: (status: '' | BookRequest['status'] = '') =>
+    request<BookRequest[]>(`/api/requests${status ? `?status=${status}` : ''}`),
+  updateRequest: (id: number, changes: { status: BookRequest['status']; bookId?: number }) =>
+    request<BookRequest>(`/api/requests/${id}`, json('PATCH', changes)),
+  deleteRequest: (id: number) => request<void>(`/api/requests/${id}`, { method: 'DELETE' }),
+
+  logs: (query: { event?: string; search?: string; before?: number }) => {
+    const params = new URLSearchParams()
+    for (const [key, value] of Object.entries(query)) if (value) params.set(key, String(value))
+    return request<LogEntry[]>(`/api/logs?${params}`)
+  },
+  reading: () => request<ReadingSession[]>('/api/reading'),
+  reportReading: (bookId: number) => request<void>('/api/me/reading', json('PUT', { bookId })),
+  // keepalive, so it's still sent when the page is closing.
+  stopReading: () => request<void>('/api/me/reading', { method: 'DELETE', keepalive: true }),
 
   uploadBook: (libraryId: number, series: string, file: File) =>
     request<Book>(`/api/libraries/${libraryId}/books?${new URLSearchParams({ series, filename: file.name })}`, {

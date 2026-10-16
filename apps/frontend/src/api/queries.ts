@@ -1,5 +1,5 @@
-import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
-import { api, ApiError, type BookQuery, type MetadataField, type SeriesQuery } from './client'
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
+import { api, ApiError, type Book, type BookQuery, type BookRequest, type MetadataField, type SeriesList, type SeriesQuery } from './client'
 
 // The logged-in user, or null when nobody is.
 export const useMe = () =>
@@ -39,7 +39,9 @@ export const useLibraries = () => useQuery({ queryKey: ['libraries'], queryFn: a
 export const useSeriesList = (query: SeriesQuery = {}) =>
   useQuery({ queryKey: ['series', 'list', query], queryFn: () => api.seriesList(query) })
 
-export const useSeries = (id: number) => useQuery({ queryKey: ['series', id], queryFn: () => api.series(id) })
+// enabled false waits, e.g. until a menu that needs the series opens.
+export const useSeries = (id: number, enabled = true) =>
+  useQuery({ queryKey: ['series', id], queryFn: () => api.series(id), enabled })
 
 export const useContinueReading = () => useQuery({ queryKey: ['books', 'continue'], queryFn: api.continueReading })
 
@@ -78,11 +80,70 @@ export const useScanLibrary = () => useInvalidatingMutation(api.scanLibrary)
 export const useSetSeriesRead = () =>
   useInvalidatingMutation(({ id, read }: { id: number; read: boolean }) => api.setSeriesRead(id, read))
 
+// Marks a book read, or unread by clearing its progress.
+export const useSetBookRead = () =>
+  useInvalidatingMutation(({ book, read }: { book: Book; read: boolean }) =>
+    api.saveProgress(book.id, read ? (book.format === 'epub' ? 100 : book.pageCount) : 0, read),
+  )
+
 export const useSetHidden = () =>
   useInvalidatingMutation(({ id, hidden }: { id: number; hidden: boolean }) => api.setHidden(id, hidden))
 
 export const useSetSeriesHidden = () =>
   useInvalidatingMutation(({ id, hidden }: { id: number; hidden: boolean }) => api.setSeriesHidden(id, hidden))
+
+export const useSetListed = () =>
+  useInvalidatingMutation(({ id, list, listed }: { id: number; list: SeriesList; listed: boolean }) =>
+    api.setListed(id, list, listed),
+  )
+
+export const useAnnotations = (bookId: number) =>
+  useQuery({ queryKey: ['annotations', bookId], queryFn: () => api.annotations(bookId) })
+
+// Only the book's annotations change, so only they are reloaded; the reader
+// stays as it is.
+function useAnnotationMutation<T, R>(bookId: number, mutationFn: (vars: T) => Promise<R>) {
+  const queryClient = useQueryClient()
+  return useMutation({ mutationFn, onSuccess: () => queryClient.invalidateQueries({ queryKey: ['annotations', bookId] }) })
+}
+
+export const useCreateAnnotation = (bookId: number) =>
+  useAnnotationMutation(bookId, (a: Parameters<typeof api.createAnnotation>[1]) => api.createAnnotation(bookId, a))
+
+export const useUpdateAnnotation = (bookId: number) =>
+  useAnnotationMutation(bookId, ({ id, ...changes }: { id: number } & Parameters<typeof api.updateAnnotation>[1]) =>
+    api.updateAnnotation(id, changes),
+  )
+
+export const useDeleteAnnotation = (bookId: number) => useAnnotationMutation(bookId, api.deleteAnnotation)
+
+export const useMyRequests = () => useQuery({ queryKey: ['requests', 'mine'], queryFn: api.myRequests })
+
+export const useRequests = (status: '' | BookRequest['status']) =>
+  useQuery({ queryKey: ['requests', 'all', status], queryFn: () => api.requests(status) })
+
+export const useRequestBook = () => useInvalidatingMutation(api.requestBook)
+
+export const useWithdrawRequest = () => useInvalidatingMutation(api.withdrawRequest)
+
+export const useUpdateRequest = () =>
+  useInvalidatingMutation(({ id, ...changes }: { id: number; status: BookRequest['status']; bookId?: number }) =>
+    api.updateRequest(id, changes),
+  )
+
+export const useDeleteRequest = () => useInvalidatingMutation(api.deleteRequest)
+
+// Refreshed every 30 seconds while shown.
+export const useReading = () => useQuery({ queryKey: ['reading'], queryFn: api.reading, refetchInterval: 30_000 })
+
+export const useLogs = (query: { event?: string; search?: string }) =>
+  useInfiniteQuery({
+    queryKey: ['logs', query],
+    queryFn: ({ pageParam }) => api.logs({ ...query, before: pageParam }),
+    initialPageParam: 0,
+    // Pages hold 100; a shorter one is the last.
+    getNextPageParam: (last) => (last.length === 100 ? last[last.length - 1].id : undefined),
+  })
 
 export const useCreateUser = () => useInvalidatingMutation(api.createUser)
 

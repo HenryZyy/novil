@@ -105,6 +105,20 @@ export function SettingRow({
   )
 }
 
+export function BookmarkButton({ bookmarked, onClick }: { bookmarked: boolean; onClick: () => void }) {
+  return (
+    <button
+      className={`reader-icon bookmark-button${bookmarked ? ' on' : ''}`}
+      onClick={onClick}
+      aria-pressed={bookmarked}
+      aria-label={bookmarked ? 'Remove bookmark' : 'Bookmark this page'}
+      title={bookmarked ? 'Remove bookmark' : 'Bookmark this page (B)'}
+    >
+      <Icon name="bookmark" filled={bookmarked} />
+    </button>
+  )
+}
+
 export function ThemeRow() {
   const dark = useIsDark()
   return (

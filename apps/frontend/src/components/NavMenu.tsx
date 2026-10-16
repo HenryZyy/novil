@@ -8,6 +8,7 @@ function Item({
   icon,
   end,
   library,
+  list,
   children,
 }: {
   to: string
@@ -16,15 +17,21 @@ function Item({
   // For /library links: which library it shows. NavLink ignores the query,
   // so without this every library item would light up together.
   library?: string
+  // Like library, for the lists.
+  list?: string
   children: ReactNode
 }) {
   const location = useLocation()
-  const current = new URLSearchParams(location.search).get('library') ?? ''
+  const params = new URLSearchParams(location.search)
+  const current = params.get('library') ?? ''
+  const currentList = params.get('list') ?? ''
   return (
     <NavLink
       to={to}
       end={end}
-      className={({ isActive }) => (isActive && (library === undefined || library === current) ? 'active' : '')}
+      className={({ isActive }) =>
+        isActive && (library === undefined || (library === current && (list ?? '') === currentList)) ? 'active' : ''
+      }
     >
       <Icon name={icon} />
       <span>{children}</span>
@@ -80,6 +87,16 @@ export function NavMenu() {
       <nav id="nav-menu" ref={panel} className={`menu${open ? ' open' : ''}`} aria-label="Main" inert={!open}>
         <Item to="/" icon="home" end>
           Home
+        </Item>
+        <Item to="/library?list=want&sort=listed" icon="bookmark" library="" list="want">
+          Want to read
+        </Item>
+        <Item to="/library?list=favorites&sort=listed" icon="heart" library="" list="favorites">
+          Favorites
+        </Item>
+
+        <Item to="/requests" icon="request">
+          Requests
         </Item>
 
         <h3>Libraries</h3>

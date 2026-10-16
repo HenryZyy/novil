@@ -5,9 +5,12 @@ import type { FoliateView, Location, TocItem } from 'foliate-js/view.js'
 import { Dropdown } from '../components/Dropdown'
 import { Icon } from '../components/Icon'
 import { useIsDark } from '../theme'
-import { MenuSection, MenuStepper, ReaderMenuPanel, SettingRow, ThemeRow } from './MenuParts'
+import { AnnotationList } from './Annotations'
+import { BookmarkButton, MenuSection, MenuStepper, ReaderMenuPanel, SettingRow, ThemeRow } from './MenuParts'
+import { useEpubAnnotations } from './useEpubAnnotations'
 import { addFontFaces, fontFaces, fonts, type FontName } from './fonts'
 import { useProgressSaver } from './useProgressSaver'
+import { useReadingReport } from './useReadingReport'
 
 type Settings = {
   flow: 'paginated' | 'scrolled'
@@ -85,6 +88,13 @@ export function EpubReader({ book }: { book: Book }) {
   const [error, setError] = useState('')
   // Read when the book opens, which can be after a setting changed.
   const settingsRef = useRef(settings)
+  const percent = location ? Math.round(location.fraction * 100) : 0
+  const notes = useEpubAnnotations(book, location, percent)
+  // The view's events are attached once, so they call the latest versions.
+  const notesRef = useRef(notes)
+  useEffect(() => {
+    notesRef.current = notes
+  })
   // Where to open the book; later saves must not reopen it.
   const startPosition = useRef(book.completed ? undefined : book.readPosition || undefined)
 
@@ -104,10 +114,11 @@ export function EpubReader({ book }: { book: Book }) {
     let opened = false
     let view: FoliateView | undefined
     const onKey = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLSelectElement || e.target instanceof HTMLInputElement) return
+      if (e.target instanceof HTMLSelectElement || e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
       // Open dropdowns handle their own keys.
       if (e.defaultPrevented || (e.target instanceof Element && e.target.closest('[role="menu"]'))) return
       if (e.key === 'm' || e.key === 'M') setMenuOpen((open) => !open)
+      else if ((e.key === 'b' || e.key === 'B') && !e.ctrlKey && !e.metaKey) notesRef.current.toggleBookmark()
       else if (e.key === 'Escape') setMenuOpen(false)
       else if (e.key === 'ArrowLeft') view?.goLeft()
       else if (e.key === 'ArrowRight') view?.goRight()
@@ -118,6 +129,7 @@ export function EpubReader({ book }: { book: Book }) {
       if (cancelled || !container.current) return
       view = document.createElement('foliate-view') as FoliateView
       viewRef.current = view
+      notesRef.current.attach(view)
       container.current.append(view)
       view.addEventListener('relocate', (e) => setLocation((e as CustomEvent<Location>).detail))
       // Keys pressed while the book has focus happen inside its iframe.
@@ -161,7 +173,6 @@ export function EpubReader({ book }: { book: Book }) {
     view.renderer.setStyles(styles(settings, dark))
   }, [settings, dark])
 
-  const percent = location ? Math.round(location.fraction * 100) : 0
   const progress = useMemo(
     () =>
       location
@@ -170,6 +181,7 @@ export function EpubReader({ book }: { book: Book }) {
     [location, percent, book.completed],
   )
   useProgressSaver(book.id, progress)
+  useReadingReport(book.id)
 
   const chapters = flatten(toc)
   const currentChapter = location?.tocItem?.href ?? ''
@@ -195,6 +207,7 @@ export function EpubReader({ book }: { book: Book }) {
             {location?.tocItem?.label && <span>{location.tocItem.label}</span>}
           </span>
           <span className="reader-count">{percent}%</span>
+          <BookmarkButton bookmarked={Boolean(notes.bookmark)} onClick={notes.toggleBookmark} />
           <button className="reader-icon" onClick={() => setMenuOpen((o) => !o)} aria-label="Menu" aria-expanded={menuOpen}>
             <Icon name="menu" />
           </button>
@@ -218,6 +231,8 @@ export function EpubReader({ book }: { book: Book }) {
           <button className="epub-edge right" onClick={() => viewRef.current?.goRight()} aria-label="Next page" />
         </>
       )}
+
+      {notes.popup}
 
       <div className="reader-lightbar">
         <div style={{ width: `${percent}%` }} />
@@ -263,6 +278,24 @@ export function EpubReader({ book }: { book: Book }) {
                 aria-label="Progress"
               />
             </MenuSection>
+
+            <AnnotationList
+              bookId={book.id}
+              annotations={notes.annotations}
+              where={(a) => `${a.page}%`}
+              onGo={(a) => {
+                viewRef.current?.goTo(a.position)
+                setMenuOpen(false)
+              }}
+              canHighlight
+            >
+              <SettingRow
+                icon="bookmark"
+                label={notes.bookmark ? 'Page bookmarked' : 'Bookmark this page'}
+                value={notes.bookmark ? 'Remove' : `${percent}%`}
+                onClick={notes.toggleBookmark}
+              />
+            </AnnotationList>
 
             <MenuSection title="Reading">
               <SettingRow

@@ -21,17 +21,27 @@ export function UploadPage() {
   }
 
   const requested = uploadable.find((l) => l.id === Number(params.get('library')))
-  return <UploadForm libraries={uploadable} initialLibraryId={(requested ?? uploadable[0]).id} initialSeries={params.get('series') ?? ''} />
+  return (
+    <UploadForm
+      libraries={uploadable}
+      initialLibraryId={(requested ?? uploadable[0]).id}
+      initialSeries={params.get('series') ?? ''}
+      requestId={Number(params.get('request')) || undefined}
+    />
+  )
 }
 
 function UploadForm({
   libraries,
   initialLibraryId,
   initialSeries,
+  requestId,
 }: {
   libraries: { id: number; name: string }[]
   initialLibraryId: number
   initialSeries: string
+  // A book request this upload answers; it's marked as added with the book.
+  requestId?: number
 }) {
   const queryClient = useQueryClient()
   const [libraryId, setLibraryId] = useState(initialLibraryId)
@@ -43,12 +53,22 @@ function UploadForm({
   const upload = async () => {
     setUploading(true)
     setResults([])
+    let first: number | undefined
     for (const file of files) {
       try {
-        await api.uploadBook(libraryId, series.trim(), file)
+        const book = await api.uploadBook(libraryId, series.trim(), file)
+        first ??= book.id
         setResults((r) => [...r, `${file.name}: done`])
       } catch (err) {
         setResults((r) => [...r, `${file.name}: ${(err as Error).message}`])
+      }
+    }
+    if (requestId && first !== undefined) {
+      try {
+        await api.updateRequest(requestId, { status: 'added', bookId: first })
+        setResults((r) => [...r, 'The request is marked as added; the people who asked can read it now.'])
+      } catch (err) {
+        setResults((r) => [...r, `Couldn't mark the request as added: ${(err as Error).message}`])
       }
     }
     setUploading(false)
@@ -58,6 +78,7 @@ function UploadForm({
   return (
     <div className="form">
       <h1>Upload</h1>
+      {requestId && <p className="notice">Uploading for a book request. When it's done, the request is marked as added.</p>}
       <label>
         Library
         <select value={libraryId} onChange={(e) => setLibraryId(Number(e.target.value))}>

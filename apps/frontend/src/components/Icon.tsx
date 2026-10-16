@@ -57,6 +57,27 @@ const paths = {
     </>
   ),
   eyeOff: <path d="M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3 3.9M6.6 6.6C3.8 8.4 2 12 2 12s3.5 7 10 7c1.8 0 3.4-.5 4.8-1.3M9.9 9.9a3 3 0 0 0 4.2 4.2" />,
+  heart: <path d="M12 20s-7.5-4.6-9.2-9.4C1.6 7.2 3.8 4 7.2 4c2 0 3.6 1.1 4.8 2.8C13.2 5.1 14.8 4 16.8 4c3.4 0 5.6 3.2 4.4 6.6C19.5 15.4 12 20 12 20z" />,
+  bookmark: <path d="M6 3h12v18l-6-4.5L6 21z" />,
+  note: <path d="M5 4h14v11l-5 5H5zM14 20v-5h5M8.5 9h7M8.5 12.5h4" />,
+  highlight: <path d="m9 15 7.5-7.5a2.1 2.1 0 0 0-3-3L6 12l-1 4zM4 20h16" />,
+  trash: <path d="M4 7h16M9 7V4h6v3M6.5 7l1 13h9l1-13M10 11v5M14 11v5" />,
+  request: <path d="M4 4h12a2 2 0 0 1 2 2v14l-4-2.5L10 20l-4-2.5L4 19zM8 9h6M8 12.5h4M19 5v4m-2-2h4" />,
+  more: (
+    <>
+      <circle cx="12" cy="5.5" r="1.4" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="18.5" r="1.4" fill="currentColor" stroke="none" />
+    </>
+  ),
+  download: <path d="M12 4v12m0 0-4.5-4.5M12 16l4.5-4.5M4 20h16" />,
+  open: <path d="M5 4h14v16H5zM9 9l6 3-6 3z" />,
+  folder: <path d="M3 6a1 1 0 0 1 1-1h5l2 2h9a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z" />,
+  phone: <path d="M8 3h8a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM11 18h2" />,
+  tablet: <path d="M6 3h12a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM11 18h2" />,
+  desktop: <path d="M3 5h18v11H3zM9 20h6M12 16v4" />,
+  device: <path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM3 12h18M12 3c2.5 2.5 3.5 5.5 3.5 9s-1 6.5-3.5 9c-2.5-2.5-3.5-5.5-3.5-9s1-6.5 3.5-9z" />,
+  log: <path d="M5 4h14v16H5zM8.5 8.5h7M8.5 12h7M8.5 15.5h4" />,
   users: (
     <>
       <circle cx="9" cy="8" r="3.5" />
@@ -77,9 +98,10 @@ const paths = {
 
 export type IconName = keyof typeof paths
 
-export function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
+// Filled shows a heart or bookmark as set.
+export function Icon({ name, size = 20, filled = false }: { name: IconName; size?: number; filled?: boolean }) {
   return (
-    <svg className="icon" viewBox="0 0 24 24" width={size} height={size} aria-hidden="true">
+    <svg className={`icon${filled ? ' filled' : ''}`} viewBox="0 0 24 24" width={size} height={size} aria-hidden="true">
       {paths[name]}
     </svg>
   )

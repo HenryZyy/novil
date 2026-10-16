@@ -14,6 +14,12 @@ const statuses: Choice<NonNullable<SeriesQuery['status']>>[] = [
   { value: 'read', label: 'Read' },
 ]
 
+const lists: Choice<NonNullable<SeriesQuery['list']>>[] = [
+  { value: '', label: 'All series' },
+  { value: 'want', label: 'Want to read' },
+  { value: 'favorites', label: 'Favorites' },
+]
+
 const sorts: Choice<SeriesSort>[] = [
   { value: '', label: 'Name, A to Z' },
   { value: 'name-desc', label: 'Name, Z to A' },
@@ -32,6 +38,7 @@ export function LibraryPage() {
     library: Number(params.get('library')) || undefined,
     search: params.get('search') ?? '',
     status: (params.get('status') ?? '') as SeriesQuery['status'],
+    list: (params.get('list') ?? '') as SeriesQuery['list'],
     sort: (params.get('sort') ?? '') as SeriesQuery['sort'],
   }
   const series = useSeriesList(query)
@@ -78,7 +85,16 @@ export function LibraryPage() {
           choices={statuses}
           onChange={(v) => set('status', v)}
         />
-        <Dropdown label="Sort by" icon="sort" iconOnly value={query.sort ?? ''} defaultValue="" choices={sorts} onChange={(v) => set('sort', v)} />
+        <Dropdown label="List" icon="bookmark" value={query.list ?? ''} defaultValue="" choices={lists} onChange={(v) => set('list', v)} />
+        <Dropdown
+          label="Sort by"
+          icon="sort"
+          iconOnly
+          value={query.sort ?? ''}
+          defaultValue=""
+          choices={query.list ? [...sorts, { value: 'listed', label: 'Recently listed' }] : sorts}
+          onChange={(v) => set('sort', v)}
+        />
         {series.data && <span className="muted toolbar-count">{plural(series.data.length, 'series', 'series')}</span>}
       </div>
 

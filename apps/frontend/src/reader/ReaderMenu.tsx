@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router'
 import { Icon } from '../components/Icon'
-import type { Book } from '../api/client'
+import type { Annotation, Book } from '../api/client'
+import { AnnotationList } from './Annotations'
 import {
   directions,
   fits,
@@ -22,6 +23,9 @@ export function ReaderMenu({
   zoom,
   onZoom,
   onClose,
+  annotations,
+  bookmarked,
+  onToggleBookmark,
 }: {
   book: Book
   chapters: Book[]
@@ -32,6 +36,9 @@ export function ReaderMenu({
   zoom: number
   onZoom: (factor: number) => void
   onClose: () => void
+  annotations: Annotation[]
+  bookmarked: boolean
+  onToggleBookmark: () => void
 }) {
   const navigate = useNavigate()
   const index = chapters.findIndex((c) => c.id === book.id)
@@ -62,6 +69,15 @@ export function ReaderMenu({
           </select>
         </MenuStepper>
       </MenuSection>
+
+      <AnnotationList bookId={book.id} annotations={annotations} where={(a) => `Page ${a.page}`} onGo={(a) => onPageChange(a.page)}>
+        <SettingRow
+          icon="bookmark"
+          label={bookmarked ? 'Page bookmarked' : 'Bookmark this page'}
+          value={bookmarked ? 'Remove' : `Page ${page}`}
+          onClick={onToggleBookmark}
+        />
+      </AnnotationList>
 
       <MenuSection title="Chapter">
         <MenuStepper

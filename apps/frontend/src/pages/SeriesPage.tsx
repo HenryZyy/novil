@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router'
-import { isAdmin, useBooks, useCurrentUser, useLibraries, useSeries, useSetSeriesRead } from '../api/queries'
+import { isAdmin, useBooks, useCurrentUser, useLibraries, useSeries, useSetListed, useSetSeriesRead } from '../api/queries'
 import { isReadable, type Book } from '../api/client'
 import { BookCard } from '../components/Cards'
 import { Row } from '../components/Row'
@@ -16,6 +16,7 @@ export function SeriesPage() {
   const libraries = useLibraries()
   const user = useCurrentUser()
   const setRead = useSetSeriesRead()
+  const setListed = useSetListed()
   const [editing, setEditing] = useState<Book | null>(null)
   const [expanded, setExpanded] = useState(false)
   // A state, not a ref: the info only exists once the series has loaded.
@@ -69,6 +70,24 @@ export function SeriesPage() {
             <button onClick={() => setRead.mutate({ id: s.id, read: !allRead })} disabled={setRead.isPending}>
               {allRead ? 'Mark as unread' : 'Mark as read'}
             </button>
+            <button
+              className={`list-toggle${s.wantToRead ? ' on' : ''}`}
+              aria-pressed={s.wantToRead}
+              onClick={() => setListed.mutate({ id: s.id, list: 'want', listed: !s.wantToRead })}
+              disabled={setListed.isPending}
+            >
+              <Icon name="bookmark" size={16} filled={s.wantToRead} /> Want to read
+            </button>
+            <button
+              className={`list-toggle icon-button${s.favorite ? ' on' : ''}`}
+              aria-pressed={s.favorite}
+              aria-label="Favorite"
+              title={s.favorite ? 'Remove from favorites' : 'Add to favorites'}
+              onClick={() => setListed.mutate({ id: s.id, list: 'favorites', listed: !s.favorite })}
+              disabled={setListed.isPending}
+            >
+              <Icon name="heart" size={18} filled={s.favorite} />
+            </button>
             {single && isAdmin(user) && (
               <button onClick={() => setEditing(books.data[0])}>
                 <Icon name="edit" size={16} /> Edit details
@@ -89,13 +108,8 @@ export function SeriesPage() {
           <h2>Books</h2>
           <Row scrollTo={next ? String(next.id) : undefined}>
         {books.data.map((book) => (
-          <div key={book.id} className="card-wrap" data-row-id={book.id}>
-            <BookCard book={book} />
-            {isAdmin(user) && (
-              <button className="card-edit" onClick={() => setEditing(book)} aria-label={`Edit details of ${book.title}`} title="Edit details">
-                <Icon name="edit" size={16} />
-              </button>
-            )}
+          <div key={book.id} data-row-id={book.id}>
+            <BookCard book={book} inSeries />
           </div>
         ))}
           </Row>

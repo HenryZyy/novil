@@ -1,6 +1,7 @@
 import { Link } from 'react-router'
 import { fileUrl, isReadable, type Book, type Series } from '../api/client'
 import { plural } from '../format'
+import { BookMenu, SeriesMenu } from './CardMenus'
 import { Cover } from './Cover'
 import { Icon } from './Icon'
 import { Progress } from './Progress'
@@ -8,17 +9,20 @@ import { Progress } from './Progress'
 export function SeriesCard({ series }: { series: Series }) {
   const done = series.bookCount > 0 && series.readCount === series.bookCount
   return (
-    <Link to={`/series/${series.id}`} className="card">
-      <Cover bookId={series.coverBookId} title={series.name} />
-      {series.hiddenCount > 0 && series.hiddenCount === series.bookCount && <HiddenBadge />}
-      <Progress value={series.progress} />
-      <span className="card-title" title={series.name}>
-        {series.name}
-      </span>
-      <span className="muted">
-        {done ? 'Read' : series.readCount > 0 ? `${series.readCount} / ${series.bookCount} read` : plural(series.bookCount, 'book')}
-      </span>
-    </Link>
+    <div className="card-wrap">
+      <Link to={`/series/${series.id}`} className="card">
+        <Cover bookId={series.coverBookId} title={series.name} />
+        {series.hiddenCount > 0 && series.hiddenCount === series.bookCount && <HiddenBadge />}
+        <Progress value={series.progress} />
+        <span className="card-title" title={series.name}>
+          {series.name}
+        </span>
+        <span className="muted">
+          {done ? 'Read' : series.readCount > 0 ? `${series.readCount} / ${series.bookCount} read` : plural(series.bookCount, 'book')}
+        </span>
+      </Link>
+      <SeriesMenu series={series} />
+    </div>
   )
 }
 
@@ -39,7 +43,8 @@ function status(book: Book) {
   return book.readPage > 0 ? `Page ${book.readPage} / ${book.pageCount}` : plural(book.pageCount, 'page')
 }
 
-export function BookCard({ book, showSeries = false }: { book: Book; showSeries?: boolean }) {
+// inSeries: shown on its series' page; see BookMenu.
+export function BookCard({ book, showSeries = false, inSeries = false }: { book: Book; showSeries?: boolean; inSeries?: boolean }) {
   const readable = isReadable(book)
   // EPUBs store the percentage read instead of a page.
   const total = book.format === 'epub' ? 100 : book.pageCount
@@ -55,13 +60,18 @@ export function BookCard({ book, showSeries = false }: { book: Book; showSeries?
       <span className="muted">{showSeries ? book.title : status(book)}</span>
     </>
   )
-  return readable ? (
-    <Link to={`/read/${book.id}`} className="card">
-      {content}
-    </Link>
-  ) : (
-    <a href={fileUrl(book.id)} className="card">
-      {content}
-    </a>
+  return (
+    <div className="card-wrap">
+      {readable ? (
+        <Link to={`/read/${book.id}`} className="card">
+          {content}
+        </Link>
+      ) : (
+        <a href={fileUrl(book.id)} className="card">
+          {content}
+        </a>
+      )}
+      <BookMenu book={book} inSeries={inSeries} />
+    </div>
   )
 }

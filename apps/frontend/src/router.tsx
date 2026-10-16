@@ -6,10 +6,13 @@ import { AdminLayout } from './pages/admin/AdminLayout'
 import { LibrariesAdmin } from './pages/admin/LibrariesAdmin'
 import { Overview } from './pages/admin/Overview'
 import { BooksAdmin } from './pages/admin/BooksAdmin'
+import { LogsAdmin } from './pages/admin/LogsAdmin'
+import { RequestsAdmin } from './pages/admin/RequestsAdmin'
 import { UsersAdmin } from './pages/admin/UsersAdmin'
 import { HomePage } from './pages/HomePage'
 import { LibraryPage } from './pages/LibraryPage'
 import { LoginPage } from './pages/LoginPage'
+import { RequestsPage } from './pages/RequestsPage'
 import { SeriesPage } from './pages/SeriesPage'
 import { UploadPage } from './pages/UploadPage'
 import { ReaderPage } from './reader/ReaderPage'
@@ -29,6 +32,7 @@ export const router = createBrowserRouter([
           { path: '/', element: <HomePage /> },
           { path: '/library', element: <LibraryPage /> },
           { path: '/series/:seriesId', element: <SeriesPage /> },
+          { path: '/requests', element: <RequestsPage /> },
           {
             element: <RequireAuth admin />,
             children: [
@@ -40,7 +44,9 @@ export const router = createBrowserRouter([
                   { index: true, element: <Overview /> },
                   { path: 'libraries', element: <LibrariesAdmin /> },
                   { path: 'books', element: <BooksAdmin /> },
+                  { path: 'requests', element: <RequestsAdmin /> },
                   { path: 'users', element: <UsersAdmin /> },
+                  { path: 'logs', element: <LogsAdmin /> },
                 ],
               },
             ],

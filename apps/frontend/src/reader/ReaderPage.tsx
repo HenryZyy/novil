@@ -1,12 +1,14 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent, type ReactNode, type RefObject } from 'react'
 import { Link, useParams } from 'react-router'
 import { fileUrl, pageUrl, type Book } from '../api/client'
-import { useBook, useBooks } from '../api/queries'
+import { useAnnotations, useBook, useBooks, useCreateAnnotation, useDeleteAnnotation } from '../api/queries'
 import { EpubReader } from './EpubReader'
 import { Icon } from '../components/Icon'
+import { BookmarkButton } from './MenuParts'
 import { ReaderMenu } from './ReaderMenu'
 import { useReaderSettings, type ReaderSettings } from './settings'
 import { useProgressSaver } from './useProgressSaver'
+import { useReadingReport } from './useReadingReport'
 import { clampPan, noZoom, zoomAt, type Zoom } from './zoom'
 
 export function ReaderPage() {
@@ -30,12 +32,21 @@ function Reader({ book }: { book: Book }) {
   const [menuOpen, setMenuOpen] = useState(settings.pinned)
   const startPage = book.completed ? 1 : Math.min(Math.max(book.readPage, 1), book.pageCount)
   const [page, setPage] = useState(startPage)
+  const annotations = useAnnotations(book.id)
+  const createAnnotation = useCreateAnnotation(book.id)
+  const deleteAnnotation = useDeleteAnnotation(book.id)
+  const bookmark = annotations.data?.find((a) => a.kind === 'bookmark' && a.page === page)
+  const toggleBookmark = () => {
+    if (bookmark) deleteAnnotation.mutate(bookmark.id)
+    else createAnnotation.mutate({ kind: 'bookmark', page })
+  }
   const books = useBooks(book.seriesId)
   const progress = useMemo(
     () => ({ page, completed: book.completed || page >= book.pageCount }),
     [page, book.completed, book.pageCount],
   )
   useProgressSaver(book.id, progress)
+  useReadingReport(book.id)
 
   const chapters = books.data?.filter((b) => b.format === 'cbz') ?? []
   const nextChapter = chapters[chapters.findIndex((c) => c.id === book.id) + 1]
@@ -78,12 +89,13 @@ function Reader({ book }: { book: Book }) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLSelectElement) return
+      if (e.target instanceof HTMLSelectElement || e.target instanceof HTMLTextAreaElement) return
       const mod = e.ctrlKey || e.metaKey
       if (mod && (e.key === '+' || e.key === '=')) zoomBy(1.25)
       else if (mod && e.key === '-') zoomBy(0.8)
       else if (mod && e.key === '0') resetZoom()
       else if (e.key === 'm' || e.key === 'M') setMenuOpen((open) => !open)
+      else if (!mod && (e.key === 'b' || e.key === 'B')) toggleBookmark()
       else if (e.key === 'Escape') setMenuOpen(false)
       else if (settings.layout !== 'strip' && e.key === 'ArrowLeft') left()
       else if (settings.layout !== 'strip' && e.key === 'ArrowRight') right()
@@ -186,6 +198,7 @@ function Reader({ book }: { book: Book }) {
           <span className="reader-count">
             {page} / {book.pageCount}
           </span>
+          <BookmarkButton bookmarked={Boolean(bookmark)} onClick={toggleBookmark} />
           <button className="reader-icon" onClick={() => setMenuOpen((o) => !o)} aria-label="Menu" aria-expanded={menuOpen}>
             <Icon name="menu" />
           </button>
@@ -248,6 +261,9 @@ function Reader({ book }: { book: Book }) {
             zoom={zoom.scale}
             onZoom={zoomBy}
             onClose={() => setMenuOpen(false)}
+            annotations={annotations.data ?? []}
+            bookmarked={Boolean(bookmark)}
+            onToggleBookmark={toggleBookmark}
           />
         </>
       )}
