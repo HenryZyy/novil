@@ -207,16 +207,6 @@ button:disabled {
   mask: url('/logo.svg') center / contain no-repeat;
 }
 
-.admin-nav a {
-  text-decoration: none;
-  color: var(--muted);
-}
-
-.admin-nav a.active {
-  color: var(--accent);
-  font-weight: 600;
-}
-
 /* Hamburger menu: a drawer under the navbar, like Jellyfin's. */
 
 .menu-button {
@@ -891,27 +881,124 @@ button:disabled {
   background: var(--panel);
 }
 
+/* Dashboard: a side nav that matches the menu drawer, tabs on phones. */
 .admin {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2rem;
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  align-items: start;
+  gap: 2.5rem;
 }
 
 .admin-nav {
+  position: sticky;
+  top: calc(var(--header-h) + 1.5rem);
   display: flex;
   flex-direction: column;
+  gap: 2px;
+  padding: 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+}
+
+.admin-nav h3 {
+  margin: 0.5rem 0.75rem 0.4rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.admin-nav a {
+  position: relative;
+  display: flex;
+  align-items: center;
   gap: 0.75rem;
-  min-width: 140px;
+  min-height: 2.5rem;
+  padding: 0 0.75rem;
+  border-radius: 8px;
+  color: var(--fg);
+  text-decoration: none;
+  white-space: nowrap;
+  transition:
+    background-color var(--fast) var(--ease),
+    color var(--fast) var(--ease);
 }
 
-.admin-content {
-  flex: 1;
-  min-width: 0;
+.admin-nav a svg {
+  flex-shrink: 0;
+  color: var(--muted);
+  transition: color var(--fast) var(--ease);
 }
 
-@media (max-width: 700px) {
+.admin-nav a:hover {
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+}
+
+.admin-nav a.active {
+  color: var(--accent);
+  font-weight: 600;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.admin-nav a.active svg {
+  color: var(--accent);
+}
+
+.admin-nav a.active::before {
+  content: '';
+  position: absolute;
+  inset: 0.6rem auto 0.6rem -0.5rem;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+  background: var(--accent);
+}
+
+.admin-content > :first-child {
+  margin-top: 0;
+}
+
+@media (max-width: 900px) {
+  .admin {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1.5rem;
+  }
+
   .admin-nav {
+    position: static;
     flex-direction: row;
+    gap: 0.25rem;
+    padding: 0;
+    border: 0;
+    border-bottom: 1px solid var(--line);
+    border-radius: 0;
+    background: none;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .admin-nav h3 {
+    display: none;
+  }
+
+  .admin-nav a {
+    flex: 1 0 auto;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0 0.5rem;
+    border-radius: 8px 8px 0 0;
+  }
+
+  .admin-nav a.active {
+    background: none;
+  }
+
+  .admin-nav a.active::before {
+    inset: auto 0.5rem 0 0.5rem;
+    width: auto;
+    height: 3px;
+    border-radius: 2px 2px 0 0;
   }
 }
 
@@ -1343,6 +1430,54 @@ td {
 .size-controls .setting-value {
   min-width: 3rem;
   text-align: center;
+}
+
+.font-choices {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+  padding: 0.25rem 1.25rem;
+}
+
+.font-choices button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  min-width: 0;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--reader-border);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font-size: 0.85rem;
+  text-align: left;
+}
+
+.font-choices button > * {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.font-choices .font-sample {
+  font-size: 1.5rem;
+  line-height: 1.2;
+}
+
+.font-choices .font-name {
+  font-size: 0.85rem;
+}
+
+.font-choices button:hover {
+  border-color: var(--muted);
+}
+
+.font-choices button[aria-checked='true'] {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+  color: var(--accent);
 }
 
 .reader-menu-hint {
