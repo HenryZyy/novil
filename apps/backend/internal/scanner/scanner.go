@@ -1,9 +1,8 @@
-// Package scanner finds the series and books in a library folder.
-// Each folder in the library is a series, and the files inside it are its
-// books. A file directly in the library folder is a series on its own.
+// Package scanner finds books in a library. Each folder is a series.
 package scanner
 
 import (
+	"errors"
 	"io/fs"
 	"log/slog"
 	"path/filepath"
@@ -36,13 +35,38 @@ type Series struct {
 	Books []Book
 }
 
-// Scan returns the series in root, sorted by name.
-// Files that can't be read get skipped
 func Scan(root string) ([]Series, error) {
+	byPath, err := walk(root, root)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Series, 0, len(byPath))
+	for _, s := range byPath {
+		out = append(out, *s)
+	}
+	slices.SortFunc(out, func(a, b Series) int { return natsort.Compare(a.Name, b.Name) })
+	return out, nil
+}
+
+func ScanSeries(root, dir string) (Series, error) {
+	byPath, err := walk(root, dir)
+	if errors.Is(err, fs.ErrNotExist) {
+		err = nil
+	}
+	if err != nil {
+		return Series{}, err
+	}
+	if s := byPath[dir]; s != nil {
+		return *s, nil
+	}
+	return Series{Name: filepath.Base(dir), Path: dir}, nil
+}
+
+func walk(root, start string) (map[string]*Series, error) {
 	byPath := map[string]*Series{}
-	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+	err := filepath.WalkDir(start, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
-			if p == root {
+			if p == start {
 				return err
 			}
 			slog.Warn("skipping unreadable path", "path", p, "err", err)
@@ -51,7 +75,7 @@ func Scan(root string) ([]Series, error) {
 			}
 			return nil
 		}
-		if p != root && strings.HasPrefix(d.Name(), ".") {
+		if p != start && strings.HasPrefix(d.Name(), ".") {
 			if d.IsDir() {
 				return filepath.SkipDir
 			}
@@ -87,17 +111,10 @@ func Scan(root string) ([]Series, error) {
 		s.Books = append(s.Books, book)
 		return nil
 	})
-	if err != nil {
-		return nil, err
-	}
-
-	out := make([]Series, 0, len(byPath))
 	for _, s := range byPath {
 		slices.SortFunc(s.Books, func(a, b Book) int { return natsort.Compare(a.Path, b.Path) })
-		out = append(out, *s)
 	}
-	slices.SortFunc(out, func(a, b Series) int { return natsort.Compare(a.Name, b.Name) })
-	return out, nil
+	return byPath, err
 }
 
 func readBook(p string, d fs.DirEntry, format string) (Book, error) {

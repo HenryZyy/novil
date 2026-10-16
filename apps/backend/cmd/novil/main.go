@@ -26,7 +26,10 @@ func main() {
 }
 
 func run() error {
-	cfg := config.Load()
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
 	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
 		return err
 	}
@@ -37,8 +40,11 @@ func run() error {
 	defer database.Close()
 
 	srv := &http.Server{
-		Addr:              cfg.Addr,
-		Handler:           api.New(store.New(database)),
+		Addr: cfg.Addr,
+		Handler: api.New(store.New(database), api.Options{
+			WebDir:         cfg.WebDir,
+			MaxUploadBytes: cfg.MaxUploadBytes,
+		}),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 

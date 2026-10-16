@@ -2,6 +2,7 @@
 package store
 
 import (
+	"cmp"
 	"database/sql"
 	"errors"
 	"time"
@@ -12,16 +13,18 @@ import (
 var ErrNotFound = errors.New("not found")
 
 type Library struct {
-	ID   int64  `json:"id"`
-	Name string `json:"name"`
-	Path string `json:"path"`
+	ID           int64  `json:"id"`
+	Name         string `json:"name"`
+	Path         string `json:"path"`
+	AllowUploads bool   `json:"allowUploads"`
 }
 
 type Series struct {
-	ID        int64  `json:"id"`
-	LibraryID int64  `json:"libraryId"`
-	Name      string `json:"name"`
-	BookCount int    `json:"bookCount"`
+	ID          int64  `json:"id"`
+	LibraryID   int64  `json:"libraryId"`
+	Name        string `json:"name"`
+	BookCount   int    `json:"bookCount"`
+	CoverBookID *int64 `json:"coverBookId"`
 }
 
 type Book struct {
@@ -31,6 +34,8 @@ type Book struct {
 	Format    string `json:"format"`
 	Size      int64  `json:"size"`
 	PageCount int    `json:"pageCount"`
+	ReadPage  int    `json:"readPage"`
+	Completed bool   `json:"completed"`
 	Path      string `json:"-"`
 }
 
@@ -56,8 +61,10 @@ func (s *Store) CreateLibrary(name, path string) (Library, error) {
 	return Library{ID: id, Name: name, Path: path}, err
 }
 
+const librarySelect = `SELECT id, name, path, allow_uploads FROM libraries`
+
 func (s *Store) ListLibraries() ([]Library, error) {
-	rows, err := s.db.Query(`SELECT id, name, path FROM libraries ORDER BY name`)
+	rows, err := s.db.Query(librarySelect + ` ORDER BY name`)
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +72,7 @@ func (s *Store) ListLibraries() ([]Library, error) {
 	out := []Library{}
 	for rows.Next() {
 		var l Library
-		if err := rows.Scan(&l.ID, &l.Name, &l.Path); err != nil {
+		if err := rows.Scan(&l.ID, &l.Name, &l.Path, &l.AllowUploads); err != nil {
 			return nil, err
 		}
 		out = append(out, l)
@@ -75,15 +82,26 @@ func (s *Store) ListLibraries() ([]Library, error) {
 
 func (s *Store) GetLibrary(id int64) (Library, error) {
 	var l Library
-	err := s.db.QueryRow(`SELECT id, name, path FROM libraries WHERE id = ?`, id).Scan(&l.ID, &l.Name, &l.Path)
+	err := s.db.QueryRow(librarySelect+` WHERE id = ?`, id).Scan(&l.ID, &l.Name, &l.Path, &l.AllowUploads)
 	return l, notFound(err)
 }
 
+func (s *Store) SetAllowUploads(id int64, allow bool) (Library, error) {
+	res, err := s.db.Exec(`UPDATE libraries SET allow_uploads = ? WHERE id = ?`, allow, id)
+	if err != nil {
+		return Library{}, err
+	}
+	if n, err := res.RowsAffected(); err != nil || n == 0 {
+		return Library{}, cmp.Or(err, ErrNotFound)
+	}
+	return s.GetLibrary(id)
+}
+
 const seriesSelect = `
-	SELECT s.id, s.library_id, s.name, COUNT(b.id)
+	SELECT s.id, s.library_id, s.name, COUNT(b.id),
+		(SELECT id FROM books WHERE series_id = s.id AND format = 'cbz' ORDER BY sort_order LIMIT 1)
 	FROM series s LEFT JOIN books b ON b.series_id = s.id`
 
-// ListSeries returns the series in a library, or all series if libraryID is 0.
 func (s *Store) ListSeries(libraryID int64) ([]Series, error) {
 	rows, err := s.db.Query(seriesSelect+`
 		WHERE ? = 0 OR s.library_id = ?
@@ -95,7 +113,7 @@ func (s *Store) ListSeries(libraryID int64) ([]Series, error) {
 	out := []Series{}
 	for rows.Next() {
 		var sr Series
-		if err := rows.Scan(&sr.ID, &sr.LibraryID, &sr.Name, &sr.BookCount); err != nil {
+		if err := rows.Scan(&sr.ID, &sr.LibraryID, &sr.Name, &sr.BookCount, &sr.CoverBookID); err != nil {
 			return nil, err
 		}
 		out = append(out, sr)
@@ -106,20 +124,23 @@ func (s *Store) ListSeries(libraryID int64) ([]Series, error) {
 func (s *Store) GetSeries(id int64) (Series, error) {
 	var sr Series
 	err := s.db.QueryRow(seriesSelect+` WHERE s.id = ? GROUP BY s.id`, id).
-		Scan(&sr.ID, &sr.LibraryID, &sr.Name, &sr.BookCount)
+		Scan(&sr.ID, &sr.LibraryID, &sr.Name, &sr.BookCount, &sr.CoverBookID)
 	return sr, notFound(err)
 }
 
-const bookSelect = `SELECT id, series_id, title, format, size, page_count, path FROM books`
+const bookSelect = `
+	SELECT b.id, b.series_id, b.title, b.format, b.size, b.page_count,
+		COALESCE(p.page, 0), COALESCE(p.completed, 0), b.path
+	FROM books b LEFT JOIN progress p ON p.book_id = b.id`
 
 func scanBook(row interface{ Scan(...any) error }) (Book, error) {
 	var b Book
-	err := row.Scan(&b.ID, &b.SeriesID, &b.Title, &b.Format, &b.Size, &b.PageCount, &b.Path)
+	err := row.Scan(&b.ID, &b.SeriesID, &b.Title, &b.Format, &b.Size, &b.PageCount, &b.ReadPage, &b.Completed, &b.Path)
 	return b, err
 }
 
 func (s *Store) ListBooks(seriesID int64) ([]Book, error) {
-	rows, err := s.db.Query(bookSelect+` WHERE series_id = ? ORDER BY sort_order`, seriesID)
+	rows, err := s.db.Query(bookSelect+` WHERE b.series_id = ? ORDER BY b.sort_order`, seriesID)
 	if err != nil {
 		return nil, err
 	}
@@ -136,11 +157,15 @@ func (s *Store) ListBooks(seriesID int64) ([]Book, error) {
 }
 
 func (s *Store) GetBook(id int64) (Book, error) {
-	b, err := scanBook(s.db.QueryRow(bookSelect+` WHERE id = ?`, id))
+	b, err := scanBook(s.db.QueryRow(bookSelect+` WHERE b.id = ?`, id))
 	return b, notFound(err)
 }
 
-// GetProgress returns page 0 for a book that hasn't been opened yet.
+func (s *Store) GetBookByPath(path string) (Book, error) {
+	b, err := scanBook(s.db.QueryRow(bookSelect+` WHERE b.path = ?`, path))
+	return b, notFound(err)
+}
+
 func (s *Store) GetProgress(bookID int64) (Progress, error) {
 	p := Progress{BookID: bookID}
 	var updated string
@@ -166,33 +191,48 @@ func (s *Store) SetProgress(p Progress) (Progress, error) {
 	return p, err
 }
 
-// ScanResult counts the series and books found in a scan.
 type ScanResult struct {
 	Series int `json:"series"`
 	Books  int `json:"books"`
 }
 
-// SyncLibrary saves the result of a scan. Books that already exist keep
-// their ID, so reading progress isn't lost. Missing files are removed.
+// Existing books keep their ID, so reading progress survives a rescan.
 func (s *Store) SyncLibrary(libraryID int64, found []scanner.Series) (ScanResult, error) {
+	return s.sync(libraryID, found, `
+		DELETE FROM books WHERE id NOT IN (SELECT id FROM seen_books)
+		AND series_id IN (SELECT id FROM series WHERE library_id = ?1);
+		DELETE FROM series WHERE library_id = ?1 AND id NOT IN (SELECT id FROM seen_series)`, libraryID)
+}
+
+func (s *Store) SyncSeries(libraryID int64, found scanner.Series) error {
+	_, err := s.sync(libraryID, []scanner.Series{found}, `
+		DELETE FROM books WHERE id NOT IN (SELECT id FROM seen_books)
+		AND series_id IN (SELECT id FROM series WHERE library_id = ?1 AND path = ?2);
+		DELETE FROM series WHERE library_id = ?1 AND path = ?2
+		AND NOT EXISTS (SELECT 1 FROM books WHERE series_id = series.id)`, libraryID, found.Path)
+	return err
+}
+
+func (s *Store) sync(libraryID int64, found []scanner.Series, cleanup string, args ...any) (ScanResult, error) {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return ScanResult{}, err
 	}
 	defer tx.Rollback()
 
-	if _, err := tx.Exec(`CREATE TEMP TABLE IF NOT EXISTS seen_series (id INTEGER PRIMARY KEY)`); err != nil {
-		return ScanResult{}, err
-	}
-	if _, err := tx.Exec(`CREATE TEMP TABLE IF NOT EXISTS seen_books (id INTEGER PRIMARY KEY)`); err != nil {
-		return ScanResult{}, err
-	}
-	if _, err := tx.Exec(`DELETE FROM seen_series; DELETE FROM seen_books`); err != nil {
+	if _, err := tx.Exec(`
+		CREATE TEMP TABLE IF NOT EXISTS seen_series (id INTEGER PRIMARY KEY);
+		CREATE TEMP TABLE IF NOT EXISTS seen_books (id INTEGER PRIMARY KEY);
+		DELETE FROM seen_series;
+		DELETE FROM seen_books`); err != nil {
 		return ScanResult{}, err
 	}
 
 	var result ScanResult
 	for _, sr := range found {
+		if len(sr.Books) == 0 {
+			continue
+		}
 		var seriesID int64
 		err := tx.QueryRow(`
 			INSERT INTO series (library_id, name, path) VALUES (?, ?, ?)
@@ -228,13 +268,7 @@ func (s *Store) SyncLibrary(libraryID int64, found []scanner.Series) (ScanResult
 		}
 	}
 
-	if _, err := tx.Exec(`
-		DELETE FROM books WHERE id NOT IN (SELECT id FROM seen_books)
-		AND series_id IN (SELECT id FROM series WHERE library_id = ?)`, libraryID); err != nil {
-		return ScanResult{}, err
-	}
-	if _, err := tx.Exec(`
-		DELETE FROM series WHERE library_id = ? AND id NOT IN (SELECT id FROM seen_series)`, libraryID); err != nil {
+	if _, err := tx.Exec(cleanup, args...); err != nil {
 		return ScanResult{}, err
 	}
 	return result, tx.Commit()

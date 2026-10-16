@@ -1,4 +1,4 @@
-// Package archive reads pages out of comic archives without extracting them.
+// Package archive reads pages from comic archives.
 package archive
 
 import (
@@ -21,8 +21,6 @@ var imageTypes = map[string]string{
 	".avif": "image/avif",
 }
 
-// CBZ is an open zip-based comic archive. Pages are the image entries,
-// sorted in natural order.
 type CBZ struct {
 	zr    *zip.ReadCloser
 	pages []*zip.File
@@ -45,7 +43,7 @@ func OpenCBZ(path string) (*CBZ, error) {
 
 func (c *CBZ) PageCount() int { return len(c.pages) }
 
-// Page opens page n (1-indexed) and returns its content and MIME type.
+// Page n is 1-indexed.
 func (c *CBZ) Page(n int) (io.ReadCloser, string, error) {
 	if n < 1 || n > len(c.pages) {
 		return nil, "", fmt.Errorf("page %d out of range (1-%d)", n, len(c.pages))

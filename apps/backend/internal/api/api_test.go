@@ -17,13 +17,17 @@ import (
 )
 
 func newTestServer(t *testing.T) *httptest.Server {
+	return newTestServerWithWeb(t, "")
+}
+
+func newTestServerWithWeb(t *testing.T, webDir string) *httptest.Server {
 	t.Helper()
 	database, err := db.Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { database.Close() })
-	srv := httptest.NewServer(New(store.New(database)))
+	srv := httptest.NewServer(New(store.New(database), Options{WebDir: webDir, MaxUploadBytes: 1 << 20}))
 	t.Cleanup(srv.Close)
 	return srv
 }
@@ -78,7 +82,8 @@ func TestLibraryFlow(t *testing.T) {
 
 	var series []store.Series
 	do(t, srv, "GET", "/api/series?library=1", "", http.StatusOK, &series)
-	if len(series) != 1 || series[0].Name != "Solo Leveling" || series[0].BookCount != 1 {
+	if len(series) != 1 || series[0].Name != "Solo Leveling" || series[0].BookCount != 1 ||
+		series[0].CoverBookID == nil || *series[0].CoverBookID != 1 {
 		t.Fatalf("series %+v", series)
 	}
 
@@ -113,6 +118,10 @@ func TestLibraryFlow(t *testing.T) {
 	if p.Page != 2 || !p.Completed {
 		t.Errorf("progress after rescan %+v", p)
 	}
+	do(t, srv, "GET", "/api/series/1/books", "", http.StatusOK, &books)
+	if books[0].ReadPage != 2 || !books[0].Completed {
+		t.Errorf("book progress after rescan %+v", books[0])
+	}
 
 	// Deleting the file and rescanning removes the book and series.
 	if err := os.RemoveAll(filepath.Join(root, "Solo Leveling")); err != nil {
@@ -138,7 +147,6 @@ func TestDownloadNonASCIIFilename(t *testing.T) {
 		t.Fatal(err)
 	}
 	resp.Body.Close()
-	// Raw UTF-8 in headers is garbled by browsers, so it must be percent-encoded.
 	cd := resp.Header.Get("Content-Disposition")
 	if !strings.Contains(cd, "filename*=utf-8''") {
 		t.Errorf("Content-Disposition %q is not percent-encoded", cd)
@@ -147,4 +155,29 @@ func TestDownloadNonASCIIFilename(t *testing.T) {
 	if err != nil || params["filename"] != "第1巻.cbz" {
 		t.Errorf("Content-Disposition %q: filename %q, err %v", cd, params["filename"], err)
 	}
+}
+
+func TestServesFrontend(t *testing.T) {
+	web := t.TempDir()
+	testutil.WriteFile(t, filepath.Join(web, "index.html"), "index")
+	testutil.WriteFile(t, filepath.Join(web, "assets", "app-1a2b.js"), "js")
+	srv := newTestServerWithWeb(t, web)
+
+	for path, want := range map[string]string{
+		"/":                   "index",
+		"/series/5":           "index",
+		"/assets/app-1a2b.js": "js",
+		"/../../etc/passwd":   "index",
+	} {
+		resp, err := http.Get(srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if string(body) != want {
+			t.Errorf("GET %s = %q, want %q", path, body, want)
+		}
+	}
+	do(t, srv, "GET", "/api/unknown", "", http.StatusNotFound, nil)
 }

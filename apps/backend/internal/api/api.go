@@ -1,4 +1,4 @@
-// Package api exposes the novil REST API over HTTP.
+// Package api is the HTTP API.
 package api
 
 import (
@@ -9,6 +9,7 @@ import (
 	"mime"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -20,16 +21,24 @@ import (
 
 type Server struct {
 	store *store.Store
+	opts  Options
 }
 
-func New(st *store.Store) http.Handler {
-	s := &Server{store: st}
+type Options struct {
+	WebDir         string
+	MaxUploadBytes int64
+}
+
+func New(st *store.Store, opts Options) http.Handler {
+	s := &Server{store: st, opts: opts}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", s.health)
 
 	mux.HandleFunc("GET /api/libraries", s.listLibraries)
 	mux.HandleFunc("POST /api/libraries", s.createLibrary)
+	mux.HandleFunc("PATCH /api/libraries/{id}", s.updateLibrary)
 	mux.HandleFunc("POST /api/libraries/{id}/scan", s.scanLibrary)
+	mux.HandleFunc("POST /api/libraries/{id}/books", s.uploadBook)
 
 	mux.HandleFunc("GET /api/series", s.listSeries)
 	mux.HandleFunc("GET /api/series/{id}", s.getSeries)
@@ -40,7 +49,35 @@ func New(st *store.Store) http.Handler {
 	mux.HandleFunc("GET /api/books/{id}/pages/{page}", s.getPage)
 	mux.HandleFunc("GET /api/books/{id}/progress", s.getProgress)
 	mux.HandleFunc("PUT /api/books/{id}/progress", s.setProgress)
+
+	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
+		writeError(w, http.StatusNotFound, "not found")
+	})
+	if opts.WebDir != "" {
+		mux.Handle("/", spa(opts.WebDir))
+	}
 	return mux
+}
+
+func spa(dir string) http.Handler {
+	files := http.FileServer(http.Dir(dir))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			w.Header().Set("Allow", "GET, HEAD")
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		info, err := os.Stat(filepath.Join(dir, filepath.FromSlash(path.Clean("/"+r.URL.Path))))
+		if err != nil || info.IsDir() {
+			w.Header().Set("Cache-Control", "no-cache")
+			http.ServeFile(w, r, filepath.Join(dir, "index.html"))
+			return
+		}
+		if strings.HasPrefix(r.URL.Path, "/assets/") {
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		}
+		files.ServeHTTP(w, r)
+	})
 }
 
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
@@ -85,6 +122,26 @@ func (s *Server) createLibrary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, lib)
+}
+
+func (s *Server) updateLibrary(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r, "id")
+	if !ok {
+		return
+	}
+	var req struct {
+		AllowUploads *bool `json:"allowUploads"`
+	}
+	if err := decodeJSON(w, r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	if req.AllowUploads == nil {
+		writeError(w, http.StatusBadRequest, "nothing to update")
+		return
+	}
+	lib, err := s.store.SetAllowUploads(id, *req.AllowUploads)
+	respond(w, lib, err)
 }
 
 func (s *Server) scanLibrary(w http.ResponseWriter, r *http.Request) {
@@ -217,8 +274,6 @@ func (s *Server) setProgress(w http.ResponseWriter, r *http.Request) {
 	respond(w, p, err)
 }
 
-// book loads the book named by the {id} path value, writing an error
-// response and returning false if that fails
 func (s *Server) book(w http.ResponseWriter, r *http.Request) (store.Book, bool) {
 	id, ok := pathID(w, r, "id")
 	if !ok {
@@ -245,7 +300,6 @@ func pathID(w http.ResponseWriter, r *http.Request, name string) (int64, bool) {
 	return id, true
 }
 
-// respond writes v as JSON, or the matching error response if err is set.
 func respond(w http.ResponseWriter, v any, err error) {
 	switch {
 	case errors.Is(err, store.ErrNotFound):

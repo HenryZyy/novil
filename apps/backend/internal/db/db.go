@@ -1,4 +1,4 @@
-// Package db opens the SQLite database and applies schema migrations.
+// Package db opens the SQLite database and runs migrations.
 package db
 
 import (
@@ -13,16 +13,13 @@ import (
 //go:embed migrations/*.sql
 var migrations embed.FS
 
-// Open opens (creating if needed) the database at path and migrates it to
-// the latest schema.
 func Open(path string) (*sql.DB, error) {
 	dsn := "file:" + path + "?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err
 	}
-	// SQLite allows one writer at a time; a single connection avoids
-	// SQLITE_BUSY errors and is plenty for a self-hosted server.
+	// One connection avoids SQLITE_BUSY errors.
 	db.SetMaxOpenConns(1)
 	if err := migrate(db); err != nil {
 		db.Close()

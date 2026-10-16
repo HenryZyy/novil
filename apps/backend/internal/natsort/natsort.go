@@ -1,5 +1,4 @@
-// Package natsort sorts strings with numbers in them the way people expect:
-// "page2" comes before "page10".
+// Package natsort sorts "page2" before "page10".
 package natsort
 
 import "strings"
@@ -38,8 +37,6 @@ func splitDigits(s string) (digits, rest string) {
 	return s[:i], s[i:]
 }
 
-// Compare is like strings.Compare but uses natural order. Use it with
-// slices.SortFunc.
 func Compare(a, b string) int {
 	switch {
 	case Less(a, b):

@@ -1,0 +1,1 @@
+ALTER TABLE libraries ADD COLUMN allow_uploads INTEGER NOT NULL DEFAULT 0;

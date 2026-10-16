@@ -8,7 +8,6 @@ import (
 	"testing"
 )
 
-// WriteCBZ creates a CBZ with the given files. Each file contains its own name.
 func WriteCBZ(t *testing.T, path string, entries ...string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
