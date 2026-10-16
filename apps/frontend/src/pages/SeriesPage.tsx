@@ -30,7 +30,8 @@ export function SeriesPage() {
   const next = books.data.find((b) => isReadable(b) && !b.completed)
   const allRead = s.bookCount > 0 && s.readCount === s.bookCount
   const canUpload = isAdmin(user) && libraries.data?.some((l) => l.id === s.libraryId && l.allowUploads)
-  const details = seriesDetails(books.data)
+  const details = seriesDetails(books.data, s.readCount)
+  const single = books.data.length === 1
 
   return (
     <>
@@ -40,10 +41,14 @@ export function SeriesPage() {
         </div>
         <div className="series-info" ref={setInfo}>
           <h1>{s.name}</h1>
-          {details.facts.length > 0 && <p className="series-facts">{details.facts.join(' · ')}</p>}
-          <p className="muted">
-            {plural(s.bookCount, 'book')} · {s.readCount} read
-          </p>
+          <dl className="details">
+            {details.list.map(([label, value]) => (
+              <div key={label}>
+                <dt>{label}</dt>
+                <dd>{value}</dd>
+              </div>
+            ))}
+          </dl>
           {details.description && (
             <div className="series-description">
               <p className={expanded ? '' : 'clamped'}>{details.description}</p>
@@ -63,6 +68,11 @@ export function SeriesPage() {
             <button onClick={() => setRead.mutate({ id: s.id, read: !allRead })} disabled={setRead.isPending}>
               {allRead ? 'Mark as unread' : 'Mark as read'}
             </button>
+            {single && isAdmin(user) && (
+              <button onClick={() => setEditing(books.data[0])}>
+                <Icon name="edit" size={16} /> Edit details
+              </button>
+            )}
             {canUpload && (
               <Link to={`/upload?${new URLSearchParams({ library: String(s.libraryId), series: s.name })}`} className="button">
                 Upload to this series
@@ -72,7 +82,11 @@ export function SeriesPage() {
           {setRead.isError && <p className="error">{setRead.error.message}</p>}
         </div>
       </div>
-      <Row scrollTo={next ? String(next.id) : undefined}>
+      {/* A single book is already shown above; only series list their books. */}
+      {!single && (
+        <section>
+          <h2>Books</h2>
+          <Row scrollTo={next ? String(next.id) : undefined}>
         {books.data.map((book) => (
           <div key={book.id} className="card-wrap" data-row-id={book.id}>
             <BookCard book={book} />
@@ -83,18 +97,9 @@ export function SeriesPage() {
             )}
           </div>
         ))}
-      </Row>
-      <section className="series-details">
-        <h2>Details</h2>
-        <dl className="details">
-          {details.list.map(([label, value]) => (
-            <div key={label}>
-              <dt>{label}</dt>
-              <dd>{value}</dd>
-            </div>
-          ))}
-        </dl>
-      </section>
+          </Row>
+        </section>
+      )}
       {editing && <EditBookDialog key={editing.id} book={editing} onClose={() => setEditing(null)} />}
     </>
   )
@@ -122,16 +127,10 @@ function useHeight(el: HTMLElement | null) {
 
 // What the books say about the series: their authors, release years and
 // languages, and the first description.
-function seriesDetails(books: Book[]) {
+function seriesDetails(books: Book[], readCount: number) {
   const unique = (values: string[]) => [...new Set(values.filter(Boolean))]
   const authors = unique(books.map((b) => b.author))
-  const years = unique(books.map((b) => b.released.slice(0, 4))).sort()
   const languages = unique(books.map((b) => b.language))
-  const facts = [
-    authors.length > 2 ? `${authors.slice(0, 2).join(', ')} and others` : authors.join(', '),
-    years.length > 1 ? `${years[0]}–${years[years.length - 1]}` : years[0],
-    languages.map(languageName).join(', '),
-  ].filter(Boolean) as string[]
   const released = unique(books.map((b) => b.released)).sort()
   const list = [
     ['Author', authors.join(', ')],
@@ -140,9 +139,19 @@ function seriesDetails(books: Book[]) {
     ['Format', unique(books.map((b) => b.format.toUpperCase())).join(', ')],
     ['Pages', books.some((b) => b.pageCount) ? books.reduce((n, b) => n + b.pageCount, 0).toLocaleString() : ''],
     ['Size', formatSize(books.reduce((n, b) => n + b.size, 0))],
+    ...(books.length > 1 ? [['Books', `${plural(books.length, 'book')} · ${readCount} read`]] : []),
     ['Added', formatDate(books.map((b) => b.addedAt).sort().at(-1)?.slice(0, 10) ?? '')],
   ].filter(([, value]) => value) as [string, string][]
-  return { facts, list, description: books.find((b) => b.description)?.description ?? '' }
+  return { list, description: withoutTitle(books.find((b) => b.description), books[0]?.seriesName) }
+}
+
+// Descriptions often start with the book's title on its own line, which the
+// page already shows as its heading.
+function withoutTitle(book: Book | undefined, seriesName = '') {
+  if (!book) return ''
+  const [first, ...rest] = book.description.split('\n')
+  const repeats = [book.title, seriesName].some((t) => t && first.trim().toLowerCase() === t.toLowerCase())
+  return (repeats ? rest.join('\n') : book.description).trim()
 }
 
 // "2020", "2020-03" or "2020-03-10" as the reader's locale writes it.
