@@ -92,14 +92,26 @@ func PNG(t *testing.T, w, h int, c color.Color) []byte {
 }
 
 // PDF returns a one-page PDF of 200 x 300 points, filled red.
-func PDF() string {
-	content := "1 0 0 rg 0 0 200 300 re f"
-	objects := []string{
-		"<< /Type /Catalog /Pages 2 0 R >>",
-		"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-		"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 300] /Contents 4 0 R >>",
-		fmt.Sprintf("<< /Length %d >>\nstream\n%s\nendstream", len(content), content),
+func PDF() string { return PDFWithPages(1) }
+
+// PDFWithPages returns a PDF of n 200x300 pages, red ones and blue ones
+// taking turns.
+func PDFWithPages(n int) string {
+	objects := []string{"<< /Type /Catalog /Pages 2 0 R >>", ""}
+	var kids []string
+	for i := range n {
+		color := "1 0 0"
+		if i%2 == 1 {
+			color = "0 0 1"
+		}
+		content := color + " rg 0 0 200 300 re f"
+		page := len(objects) + 1
+		kids = append(kids, fmt.Sprintf("%d 0 R", page))
+		objects = append(objects,
+			fmt.Sprintf("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 300] /Contents %d 0 R >>", page+1),
+			fmt.Sprintf("<< /Length %d >>\nstream\n%s\nendstream", len(content), content))
 	}
+	objects[1] = fmt.Sprintf("<< /Type /Pages /Kids [%s] /Count %d >>", strings.Join(kids, " "), n)
 	var b strings.Builder
 	b.WriteString("%PDF-1.4\n")
 	offsets := make([]int, len(objects))

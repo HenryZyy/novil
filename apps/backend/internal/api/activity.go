@@ -15,7 +15,7 @@ import (
 var logEvents = []string{
 	"login", "login_failed", "logout", "password_changed",
 	"user_created", "user_updated", "user_deleted", "password_reset",
-	"book_uploaded", "library_scanned", "request_updated",
+	"book_uploaded", "book_deleted", "library_scanned", "request_updated",
 }
 
 // audit adds an entry to the activity log. user did it (nil for nobody

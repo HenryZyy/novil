@@ -45,6 +45,11 @@ func (s *Server) getCover(w http.ResponseWriter, r *http.Request) {
 	http.ServeContent(w, r, "", time.Time{}, bytes.NewReader(data))
 }
 
+// coverRevision is part of the cache key of covers made from files. Raise
+// it when cover making improves, so books cached without a cover get
+// another try: "-2" reads EPUBs with HTML entities.
+const coverRevision = "-2"
+
 // coverFor returns a book's cover and an ETag for it.
 func (s *Server) coverFor(b store.Book) ([]byte, string, error) {
 	if b.CustomCover {
@@ -56,8 +61,9 @@ func (s *Server) coverFor(b store.Book) ([]byte, string, error) {
 			return nil, "", err
 		}
 	}
-	etag := `"file-` + b.FileKey + `"`
-	data, found, err := s.store.CachedCover(b.ID, b.FileKey)
+	key := b.FileKey + coverRevision
+	etag := `"file-` + key + `"`
+	data, found, err := s.store.CachedCover(b.ID, key)
 	if err != nil {
 		return nil, "", err
 	}
@@ -73,7 +79,7 @@ func (s *Server) coverFor(b store.Book) ([]byte, string, error) {
 			}
 			data = nil
 		}
-		if err := s.store.SetCachedCover(b.ID, b.FileKey, data); err != nil {
+		if err := s.store.SetCachedCover(b.ID, key, data); err != nil {
 			return nil, "", err
 		}
 	}

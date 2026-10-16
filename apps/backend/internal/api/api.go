@@ -31,6 +31,7 @@ type Server struct {
 	tokens         *auth.Tokens
 	loginLimiter   *limiter
 	lookupLimiter  *limiter
+	pdfs           pdfCounter
 	trustedProxies []netip.Prefix
 	opts           Options
 }
@@ -82,6 +83,7 @@ func New(st *store.Store, tokens *auth.Tokens, opts Options) http.Handler {
 		trustedProxies: opts.TrustedProxies,
 		opts:           opts,
 	}
+	s.countPDFPages()
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", s.health)
 
@@ -119,6 +121,7 @@ func New(st *store.Store, tokens *auth.Tokens, opts Options) http.Handler {
 	mux.HandleFunc("GET /api/books", s.guard(adminOnly, s.searchBooks))
 	mux.HandleFunc("GET /api/books/{id}", s.guard(member, s.getBook))
 	mux.HandleFunc("PATCH /api/books/{id}", s.guard(adminOnly, s.updateBook))
+	mux.HandleFunc("DELETE /api/books/{id}", s.guard(adminOnly, s.deleteBook))
 	mux.HandleFunc("GET /api/books/{id}/cover", s.guard(member, s.getCover))
 	mux.HandleFunc("PUT /api/books/{id}/cover", s.guard(adminOnly, s.setCover))
 	mux.HandleFunc("DELETE /api/books/{id}/cover", s.guard(adminOnly, s.deleteCover))
@@ -260,6 +263,7 @@ func (s *Server) scanLibrary(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := s.store.SyncLibrary(lib.ID, found)
 	if err == nil {
+		s.countPDFPages()
 		s.audit(r, "library_scanned", actor(r), "", fmt.Sprintf("%s: %d series, %d books", lib.Name, result.Series, result.Books))
 	}
 	respond(w, result, err)
@@ -400,9 +404,8 @@ func (s *Server) continueReading(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getBook(w http.ResponseWriter, r *http.Request) {
-	if id, ok := pathID(w, r, "id"); ok {
-		b, err := s.store.GetBook(currentUser(r).ID, id)
-		respond(w, b, err)
+	if b, ok := s.book(w, r); ok {
+		writeJSON(w, http.StatusOK, b)
 	}
 }
 
@@ -425,13 +428,17 @@ func (s *Server) getPage(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if b.Format != "cbz" {
-		writeError(w, http.StatusBadRequest, "pages are only available for cbz books")
+	if b.Format != "cbz" && b.Format != "pdf" {
+		writeError(w, http.StatusBadRequest, "pages are only available for cbz and pdf books")
 		return
 	}
 	n, err := strconv.Atoi(r.PathValue("page"))
 	if err != nil || n < 1 || n > b.PageCount {
 		writeError(w, http.StatusNotFound, "page not found")
+		return
+	}
+	if b.Format == "pdf" {
+		s.writePDFPage(w, b, n)
 		return
 	}
 	writeCBZPage(w, b, n)
@@ -507,7 +514,7 @@ func (s *Server) book(w http.ResponseWriter, r *http.Request) (store.Book, bool)
 		respond(w, nil, err)
 		return store.Book{}, false
 	}
-	return b, true
+	return s.withPages(b), true
 }
 
 func decodeJSON(w http.ResponseWriter, r *http.Request, v any) error {

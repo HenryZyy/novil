@@ -119,3 +119,16 @@ func TestDates(t *testing.T) {
 		t.Error("ValidDate is wrong")
 	}
 }
+
+// Calibre and others write HTML entities, which XML itself doesn't know.
+func TestEPUBWithHTMLEntities(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "book.epub")
+	testutil.WriteEPUB(t, path, `<dc:title>Feliz ano velho</dc:title><dc:description>It&rsquo;s a &eacute;pico.</dc:description>`)
+	md, err := Read(path, "epub")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if md.Title != "Feliz ano velho" || md.Description != "It’s a épico." {
+		t.Errorf("got %+v", md)
+	}
+}

@@ -517,8 +517,11 @@ func (s *Store) sync(libraryID int64, found []scanner.Series, cleanup string, ar
 				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 				ON CONFLICT (path) DO UPDATE SET
 					series_id = excluded.series_id, title = excluded.title, format = excluded.format,
-					size = excluded.size, mod_time = excluded.mod_time,
-					page_count = excluded.page_count, sort_order = excluded.sort_order,
+					-- Scans don't count a PDF's pages (see PDFsWithoutPageCount),
+					-- so an unchanged PDF keeps its count.
+					page_count = CASE WHEN excluded.format = 'pdf' AND books.size = excluded.size
+						AND books.mod_time = excluded.mod_time THEN books.page_count ELSE excluded.page_count END,
+					size = excluded.size, mod_time = excluded.mod_time, sort_order = excluded.sort_order,
 					author = excluded.author, language = excluded.language,
 					released = excluded.released, description = excluded.description
 				RETURNING id`,
@@ -545,5 +548,58 @@ func notFound(err error) error {
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}
+	return err
+}
+
+// BookLibrary returns the library a book is in.
+func (s *Store) BookLibrary(bookID int64) (Library, error) {
+	var l Library
+	err := s.db.QueryRow(`SELECT l.id, l.name, l.path, l.allow_uploads FROM books b
+		JOIN series s ON s.id = b.series_id JOIN libraries l ON l.id = s.library_id
+		WHERE b.id = ?`, bookID).Scan(&l.ID, &l.Name, &l.Path, &l.AllowUploads)
+	return l, notFound(err)
+}
+
+// DeleteBook removes a book with everything about it: progress, notes,
+// covers and edits. A series left without books goes too.
+func (s *Store) DeleteBook(bookID int64) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var seriesID int64
+	if err := tx.QueryRow(`DELETE FROM books WHERE id = ? RETURNING series_id`, bookID).Scan(&seriesID); err != nil {
+		return notFound(err)
+	}
+	if _, err := tx.Exec(`DELETE FROM series WHERE id = ? AND NOT EXISTS (SELECT 1 FROM books WHERE series_id = ?)`,
+		seriesID, seriesID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// PDFsWithoutPageCount returns the IDs and paths of PDFs whose pages
+// weren't counted yet; scans leave that to SetPageCount.
+func (s *Store) PDFsWithoutPageCount() (map[int64]string, error) {
+	rows, err := s.db.Query(`SELECT id, path FROM books WHERE format = 'pdf' AND page_count = 0`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[int64]string{}
+	for rows.Next() {
+		var id int64
+		var path string
+		if err := rows.Scan(&id, &path); err != nil {
+			return nil, err
+		}
+		out[id] = path
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) SetPageCount(bookID int64, pages int) error {
+	_, err := s.db.Exec(`UPDATE books SET page_count = ? WHERE id = ?`, pages, bookID)
 	return err
 }

@@ -204,7 +204,10 @@ func decodeXML(zr *zip.Reader, name string, v any) error {
 		}
 		defer rc.Close()
 		// Metadata files are small; the limit guards against zip bombs.
-		if err := xml.NewDecoder(io.LimitReader(rc, 10<<20)).Decode(v); err != nil {
+		d := xml.NewDecoder(io.LimitReader(rc, 10<<20))
+		// Some tools write HTML's &rsquo; and the like, which XML lacks.
+		d.Entity = xml.HTMLEntity
+		if err := d.Decode(v); err != nil {
 			return fmt.Errorf("%s: %w", name, err)
 		}
 		return nil

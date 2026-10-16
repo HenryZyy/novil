@@ -57,6 +57,28 @@ func (g *Generator) Close() error {
 	return g.pdf.close()
 }
 
+// The size PDF pages are read at: sharp on most screens, and small enough
+// to send quickly.
+const (
+	PageWidth  = 1600
+	PageHeight = 2400
+)
+
+// PDFPage renders page n (from 1) of the PDF at path for reading, as a JPEG.
+func (g *Generator) PDFPage(path string, n int) ([]byte, error) {
+	img, err := g.pdf.page(path, n-1, PageWidth, PageHeight)
+	if err != nil {
+		return nil, err
+	}
+	b := img.Bounds()
+	return scaleJPEG(img, b, b.Dx(), b.Dy())
+}
+
+// PDFPageCount returns how many pages the PDF at path has.
+func (g *Generator) PDFPageCount(path string) (int, error) {
+	return g.pdf.pageCount(path)
+}
+
 // FromBook makes a cover from the book file at path: the first page of a
 // CBZ or PDF, or an EPUB's cover image. It returns ErrNoCover if the file
 // has nothing usable.

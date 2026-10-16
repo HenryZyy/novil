@@ -90,8 +90,8 @@ func checkAnnotation(b store.Book, a store.Annotation) error {
 		maxPage = 100
 	}
 	switch {
-	case b.Format != "epub" && b.Format != "cbz":
-		return errors.New("only EPUBs and CBZs can be annotated")
+	case !epub && b.PageCount == 0:
+		return errors.New("this book can't be annotated")
 	case a.Kind != "bookmark" && a.Kind != "highlight":
 		return errors.New("kind must be bookmark or highlight")
 	case a.Kind == "highlight" && !epub:

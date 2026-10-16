@@ -96,11 +96,12 @@ a `code` to check instead of the message:
 | `GET /api/books?search=…&library={id}&hidden=…` | admin | All books, by series. `search` matches title, author and series; `hidden` is `hidden` or `visible` |
 | `GET /api/books/{id}` | user | One book |
 | `PATCH /api/books/{id}` | admin | Edit metadata or hide the book, see below |
+| `DELETE /api/books/{id}` | admin | Delete the book **and its file** from the library folder, with everyone's progress and notes in it. A series left without books goes too |
 | `GET /api/books/{id}/cover` | user | The cover as a JPEG, see below |
 | `PUT /api/books/{id}/cover` | admin | Upload a cover image |
 | `DELETE /api/books/{id}/cover` | admin | Go back to the automatic cover |
 | `GET /api/books/{id}/file` | user | Download the book file |
-| `GET /api/books/{id}/pages/{n}` | user | Page `n` (from 1) of a CBZ as an image |
+| `GET /api/books/{id}/pages/{n}` | user | Page `n` (from 1) of a CBZ as an image, or of a PDF as a JPEG of at most 1600×2400 |
 | `GET /api/books/{id}/progress` | user | Your progress: `{"bookId", "page", "completed", "updatedAt"}` |
 | `PUT /api/books/{id}/progress` | user | `{"page", "completed"}` saves your progress |
 | `GET /api/books/{id}/annotations` | user | Your bookmarks and highlights in a book, see below |
@@ -129,7 +130,9 @@ all of them. Progress is per user.
 
 Books carry `title`, `author`, `language`, `released` (publication date as
 `2006`, `2006-01` or `2006-01-02`, or empty), `description` (plain text),
-`addedAt` (when uploaded or first scanned), `pageCount` (CBZ only, else 0),
+`addedAt` (when uploaded or first scanned), `pageCount` (CBZ and PDF, 0 for
+EPUBs; a PDF's pages are counted in the background after a scan, or when it's
+first opened),
 `size` (bytes) and `format`.
 
 Scans and uploads read them from the file: the package document of an EPUB,
@@ -195,7 +198,7 @@ key; set `NOVIL_GOOGLE_BOOKS_KEY` for reliable lookups.
 
 The server logs logins (`login`, `login_failed`), `logout`,
 `password_changed` and admin actions (`user_created`, `user_updated`,
-`user_deleted`, `password_reset`, `book_uploaded`, `library_scanned`,
+`user_deleted`, `password_reset`, `book_uploaded`, `book_deleted`, `library_scanned`,
 `request_updated`), each with the user, IP and device, read from the
 User-Agent (`deviceKind`: `phone`, `tablet` or `desktop`; `device` like
 `Firefox on Windows`). It keeps 90 days. Filter with a comma-separated
