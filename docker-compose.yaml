@@ -6,6 +6,9 @@ services:
     container_name: novil
     restart: unless-stopped
     user: "${NOVIL_UID:-1000}:${NOVIL_GID:-1000}"
+    env_file:
+      - path: apps/backend/.env
+        required: false
     ports:
       - "8080:8080"
     volumes:

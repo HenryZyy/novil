@@ -8,47 +8,88 @@ import (
 	"log/slog"
 	"mime"
 	"net/http"
+	"net/netip"
 	"os"
 	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"novil/backend/internal/archive"
+	"novil/backend/internal/auth"
 	"novil/backend/internal/scanner"
 	"novil/backend/internal/store"
 )
 
 type Server struct {
-	store *store.Store
-	opts  Options
+	store          *store.Store
+	tokens         *auth.Tokens
+	loginLimiter   *limiter
+	trustedProxies []netip.Prefix
+	opts           Options
 }
 
+// Options are the optional API settings.
 type Options struct {
+	// WebDir is the built frontend, served for every path outside /api.
+	// Nothing is served when it's empty.
 	WebDir         string
 	MaxUploadBytes int64
+	// CORSOrigins are the browser origins allowed to call the API; see cors.
+	CORSOrigins []string
+	// TrustedProxies are reverse proxies whose X-Forwarded-For header tells
+	// the client's real IP; see clientIP.
+	TrustedProxies []netip.Prefix
+	// Each IP may try LoginBurst passwords at once, then one more every
+	// LoginInterval. Zero means 5 and 12s, so 5 per minute in the long run.
+	LoginBurst    int
+	LoginInterval time.Duration
 }
 
-func New(st *store.Store, opts Options) http.Handler {
-	s := &Server{store: st, opts: opts}
+// New returns the API handler.
+func New(st *store.Store, tokens *auth.Tokens, opts Options) http.Handler {
+	if opts.LoginBurst == 0 {
+		opts.LoginBurst = 5
+	}
+	if opts.LoginInterval == 0 {
+		opts.LoginInterval = 12 * time.Second
+	}
+	s := &Server{
+		store:          st,
+		tokens:         tokens,
+		loginLimiter:   newLimiter(opts.LoginInterval, opts.LoginBurst),
+		trustedProxies: opts.TrustedProxies,
+		opts:           opts,
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", s.health)
 
-	mux.HandleFunc("GET /api/libraries", s.listLibraries)
-	mux.HandleFunc("POST /api/libraries", s.createLibrary)
-	mux.HandleFunc("PATCH /api/libraries/{id}", s.updateLibrary)
-	mux.HandleFunc("POST /api/libraries/{id}/scan", s.scanLibrary)
-	mux.HandleFunc("POST /api/libraries/{id}/books", s.uploadBook)
+	mux.HandleFunc("POST /api/auth/login", s.limitAttempts(s.login))
+	mux.HandleFunc("POST /api/auth/logout", s.guard(pendingPassword, s.logout))
+	mux.HandleFunc("GET /api/me", s.guard(pendingPassword, s.me))
+	mux.HandleFunc("PUT /api/me/password", s.guard(pendingPassword, s.limitAttempts(s.changePassword)))
 
-	mux.HandleFunc("GET /api/series", s.listSeries)
-	mux.HandleFunc("GET /api/series/{id}", s.getSeries)
-	mux.HandleFunc("GET /api/series/{id}/books", s.listBooks)
+	mux.HandleFunc("GET /api/users", s.guard(adminOnly, s.listUsers))
+	mux.HandleFunc("POST /api/users", s.guard(adminOnly, s.createUser))
+	mux.HandleFunc("PUT /api/users/{id}/password", s.guard(adminOnly, s.resetPassword))
+	mux.HandleFunc("DELETE /api/users/{id}", s.guard(adminOnly, s.deleteUser))
 
-	mux.HandleFunc("GET /api/books/{id}", s.getBook)
-	mux.HandleFunc("GET /api/books/{id}/file", s.getBookFile)
-	mux.HandleFunc("GET /api/books/{id}/pages/{page}", s.getPage)
-	mux.HandleFunc("GET /api/books/{id}/progress", s.getProgress)
-	mux.HandleFunc("PUT /api/books/{id}/progress", s.setProgress)
+	mux.HandleFunc("GET /api/libraries", s.guard(member, s.listLibraries))
+	mux.HandleFunc("POST /api/libraries", s.guard(adminOnly, s.createLibrary))
+	mux.HandleFunc("PATCH /api/libraries/{id}", s.guard(adminOnly, s.updateLibrary))
+	mux.HandleFunc("POST /api/libraries/{id}/scan", s.guard(adminOnly, s.scanLibrary))
+	mux.HandleFunc("POST /api/libraries/{id}/books", s.guard(adminOnly, s.uploadBook))
+
+	mux.HandleFunc("GET /api/series", s.guard(member, s.listSeries))
+	mux.HandleFunc("GET /api/series/{id}", s.guard(member, s.getSeries))
+	mux.HandleFunc("GET /api/series/{id}/books", s.guard(member, s.listBooks))
+
+	mux.HandleFunc("GET /api/books/{id}", s.guard(member, s.getBook))
+	mux.HandleFunc("GET /api/books/{id}/file", s.guard(member, s.getBookFile))
+	mux.HandleFunc("GET /api/books/{id}/pages/{page}", s.guard(member, s.getPage))
+	mux.HandleFunc("GET /api/books/{id}/progress", s.guard(member, s.getProgress))
+	mux.HandleFunc("PUT /api/books/{id}/progress", s.guard(member, s.setProgress))
 
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not found")
@@ -56,7 +97,7 @@ func New(st *store.Store, opts Options) http.Handler {
 	if opts.WebDir != "" {
 		mux.Handle("/", spa(opts.WebDir))
 	}
-	return mux
+	return cors(opts.CORSOrigins, mux)
 }
 
 func spa(dir string) http.Handler {
@@ -249,7 +290,7 @@ func (s *Server) getProgress(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	p, err := s.store.GetProgress(b.ID)
+	p, err := s.store.GetProgress(currentUser(r).ID, b.ID)
 	respond(w, p, err)
 }
 
@@ -270,7 +311,7 @@ func (s *Server) setProgress(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "page out of range")
 		return
 	}
-	p, err := s.store.SetProgress(store.Progress{BookID: b.ID, Page: req.Page, Completed: req.Completed})
+	p, err := s.store.SetProgress(currentUser(r).ID, store.Progress{BookID: b.ID, Page: req.Page, Completed: req.Completed})
 	respond(w, p, err)
 }
 
@@ -318,6 +359,12 @@ func internalError(w http.ResponseWriter, err error) {
 
 func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
+}
+
+// writeCodedError adds a machine-readable code that clients can check
+// instead of matching the message, e.g. "password_change_required".
+func writeCodedError(w http.ResponseWriter, status int, code, msg string) {
+	writeJSON(w, status, map[string]string{"error": msg, "code": code})
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

@@ -29,6 +29,11 @@ ENV NOVIL_ADDR=:8080 \
     NOVIL_DATA_DIR=/config \
     NOVIL_WEB_DIR=/web
 
+# The base image's /home/nonroot is only open to its own user, but compose
+# runs the container as another one, which then can't even check for a .env
+# there. Settings come from the environment (compose env_file) instead.
+WORKDIR /
+
 COPY --from=backend /out/novil /novil
 COPY --from=frontend /app/dist /web
 COPY --from=backend --chown=65532:65532 /out/config /config
