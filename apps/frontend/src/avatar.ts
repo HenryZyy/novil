@@ -37,22 +37,3 @@ export function setAvatar(userId: number, dataUrl: string | null) {
   }
   window.dispatchEvent(new Event(changed))
 }
-
-const size = 256
-
-// Crops the image to a centred square and shrinks it, so even a large photo
-// is only a few kilobytes.
-export async function resizeAvatar(file: File) {
-  if (!file.type.startsWith('image/')) throw new Error('Choose an image file.')
-  const image = await createImageBitmap(file).catch(() => {
-    throw new Error("This image can't be read.")
-  })
-  const side = Math.min(image.width, image.height)
-  const canvas = document.createElement('canvas')
-  canvas.width = canvas.height = size
-  canvas
-    .getContext('2d')!
-    .drawImage(image, (image.width - side) / 2, (image.height - side) / 2, side, side, 0, 0, size, size)
-  image.close()
-  return canvas.toDataURL('image/webp', 0.85)
-}

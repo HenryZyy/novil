@@ -3,8 +3,9 @@ import { useRef, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router'
 import { api } from '../api/client'
 import { resetSession, useCurrentUser, useLogout } from '../api/queries'
-import { resizeAvatar, setAvatar, useAvatar } from '../avatar'
+import { setAvatar, useAvatar } from '../avatar'
 import { Avatar } from '../components/Avatar'
+import { CropDialog } from '../components/CropDialog'
 import { setTheme, themes, useTheme } from '../theme'
 
 export function ProfilePage() {
@@ -74,12 +75,19 @@ function PictureButtons({ userId }: { userId: number }) {
   const picture = useAvatar(userId)
   const input = useRef<HTMLInputElement>(null)
   const [error, setError] = useState('')
+  const [cropping, setCropping] = useState<File | null>(null)
 
-  const choose = async (file: File | undefined) => {
+  const choose = (file: File | undefined) => {
     if (!file) return
     setError('')
+    if (!file.type.startsWith('image/')) setError('Choose an image file.')
+    else setCropping(file)
+  }
+
+  const save = (dataUrl: string) => {
+    setCropping(null)
     try {
-      setAvatar(userId, await resizeAvatar(file))
+      setAvatar(userId, dataUrl)
     } catch (err) {
       setError((err as Error).message)
     }
@@ -103,6 +111,7 @@ function PictureButtons({ userId }: { userId: number }) {
       />
       {error && <p className="error">{error}</p>}
       <p className="muted">Your picture is saved in this browser only.</p>
+      {cropping && <CropDialog file={cropping} onSave={save} onCancel={() => setCropping(null)} />}
     </>
   )
 }
