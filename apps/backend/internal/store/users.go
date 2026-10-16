@@ -19,18 +19,25 @@ type User struct {
 	Role               string    `json:"role"`
 	MustChangePassword bool      `json:"mustChangePassword"`
 	CreatedAt          time.Time `json:"createdAt"`
-	PasswordHash       string    `json:"-"`
-	TokenVersion       int       `json:"-"`
+	// HasAvatar says whether GET /api/users/{id}/avatar has a picture.
+	HasAvatar bool `json:"hasAvatar"`
+	// AvatarUpdatedAt is when the picture last changed, empty without one.
+	AvatarUpdatedAt string `json:"-"`
+	PasswordHash    string `json:"-"`
+	TokenVersion    int    `json:"-"`
 }
 
-const userColumns = `id, username, password_hash, role, must_change_password, token_version, created_at`
+const userColumns = `id, username, password_hash, role, must_change_password, token_version, created_at,
+	COALESCE(avatar_updated_at, '')`
 
 func scanUser(row interface{ Scan(...any) error }) (User, error) {
 	var u User
 	var created string
-	if err := row.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Role, &u.MustChangePassword, &u.TokenVersion, &created); err != nil {
+	if err := row.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Role, &u.MustChangePassword, &u.TokenVersion, &created,
+		&u.AvatarUpdatedAt); err != nil {
 		return u, err
 	}
+	u.HasAvatar = u.AvatarUpdatedAt != ""
 	var err error
 	u.CreatedAt, err = time.Parse(time.RFC3339, created)
 	return u, err
@@ -87,6 +94,19 @@ func (s *Store) SetPassword(id int64, passwordHash string, mustChange bool) (Use
 	u, err := scanUser(s.db.QueryRow(`
 		UPDATE users SET password_hash = ?, must_change_password = ?, token_version = token_version + 1
 		WHERE id = ? RETURNING `+userColumns, passwordHash, mustChange, id))
+	return u, notFound(err)
+}
+
+// UpdateUser renames a user or changes their role. A nil value stays as it
+// is. Tokens stay valid: requests load the user fresh, so the change applies
+// to the next request.
+func (s *Store) UpdateUser(id int64, username, role *string) (User, error) {
+	u, err := scanUser(s.db.QueryRow(`
+		UPDATE users SET username = COALESCE(?, username), role = COALESCE(?, role)
+		WHERE id = ? RETURNING `+userColumns, username, role, id))
+	if err != nil && strings.Contains(err.Error(), "UNIQUE") {
+		return User{}, ErrUsernameTaken
+	}
 	return u, notFound(err)
 }
 

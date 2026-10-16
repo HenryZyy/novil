@@ -86,6 +86,52 @@ func (s *Server) resetPassword(w http.ResponseWriter, r *http.Request) {
 	respond(w, user, err)
 }
 
+// updateUser renames a user or changes their role, e.g. {"role": "admin"}.
+// Fields left out stay as they are.
+func (s *Server) updateUser(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r, "id")
+	if !ok {
+		return
+	}
+	var req struct {
+		Username *string `json:"username"`
+		Role     *string `json:"role"`
+	}
+	if err := decodeJSON(w, r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	if req.Username == nil && req.Role == nil {
+		writeError(w, http.StatusBadRequest, "nothing to update; send username or role")
+		return
+	}
+	if req.Username != nil {
+		*req.Username = strings.TrimSpace(*req.Username)
+		if err := auth.ValidateUsername(*req.Username); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
+	if req.Role != nil {
+		if *req.Role != store.RoleUser && *req.Role != store.RoleAdmin {
+			writeError(w, http.StatusBadRequest, `role must be "user" or "admin"`)
+			return
+		}
+		// Like deleting yourself: this keeps admins from locking themselves
+		// out, and since the caller stays an admin, there's always one left.
+		if id == currentUser(r).ID {
+			writeError(w, http.StatusBadRequest, "you can't change your own role")
+			return
+		}
+	}
+	user, err := s.store.UpdateUser(id, req.Username, req.Role)
+	if errors.Is(err, store.ErrUsernameTaken) {
+		writeError(w, http.StatusConflict, "username is already taken")
+		return
+	}
+	respond(w, user, err)
+}
+
 func (s *Server) deleteUser(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathID(w, r, "id")
 	if !ok {
