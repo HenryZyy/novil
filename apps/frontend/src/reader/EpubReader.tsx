@@ -5,13 +5,14 @@ import type { FoliateView, Location, TocItem } from 'foliate-js/view.js'
 import { Icon } from '../components/Icon'
 import { useIsDark } from '../theme'
 import { MenuSection, MenuStepper, ReaderMenuPanel, SettingRow, ThemeRow } from './MenuParts'
+import { addFontFaces, fontFaces, fonts, type FontName } from './fonts'
 import { useProgressSaver } from './useProgressSaver'
 
 type Settings = {
   flow: 'paginated' | 'scrolled'
   // The book's colours. "auto" follows the site's light or dark theme.
   theme: 'auto' | 'light' | 'sepia' | 'dark'
-  font: 'publisher' | 'serif' | 'sans-serif'
+  font: FontName
   fontSize: number
 }
 
@@ -24,7 +25,6 @@ const themes = {
 const themeChoices: Settings['theme'][] = ['auto', 'light', 'sepia', 'dark']
 
 const resolve = (theme: Settings['theme'], dark: boolean) => (theme === 'auto' ? (dark ? 'dark' : 'light') : theme)
-const fonts = { publisher: 'Publisher font', serif: 'Serif', 'sans-serif': 'Sans' }
 const defaults: Settings = { flow: 'paginated', theme: 'auto', font: 'publisher', fontSize: 100 }
 const storageKey = 'novil.epubReader'
 
@@ -34,7 +34,7 @@ function load(): Settings {
     return {
       flow: saved.flow === 'scrolled' ? 'scrolled' : 'paginated',
       theme: themeChoices.includes(saved.theme) ? saved.theme : defaults.theme,
-      font: saved.font in fonts ? saved.font : defaults.font,
+      font: Object.hasOwn(fonts, saved.font) ? saved.font : defaults.font,
       fontSize: typeof saved.fontSize === 'number' ? Math.min(Math.max(saved.fontSize, 60), 250) : defaults.fontSize,
     }
   } catch {
@@ -46,14 +46,16 @@ function load(): Settings {
 function styles({ theme, font, fontSize }: Settings, dark: boolean) {
   const resolved = resolve(theme, dark)
   const { bg, fg } = themes[resolved]
+  const family = fonts[font].family
   return `
+    ${family ? fontFaces : ''}
     html { color-scheme: ${resolved === 'dark' ? 'dark' : 'light'}; --theme-bg-color: ${bg}; }
     html, body { background: ${bg} !important; color: ${fg} !important; }
     html { font-size: ${fontSize}% !important; }
     body * { color: inherit !important; }
     a { text-decoration: underline; }
     p, li, blockquote { line-height: 1.6; }
-    ${font === 'publisher' ? '' : `body, body * { font-family: ${font} !important; }`}
+    ${family ? `body, body * { font-family: ${family} !important; }` : ''}
   `
 }
 
@@ -72,6 +74,9 @@ export function EpubReader({ book }: { book: Book }) {
   // Read when the book opens, like the settings.
   const darkRef = useRef(dark)
   const [menuOpen, setMenuOpen] = useState(false)
+  useEffect(() => {
+    if (menuOpen) addFontFaces()
+  }, [menuOpen])
   const [location, setLocation] = useState<Location | null>(null)
   const [toc, setToc] = useState<TocItem[]>([])
   const [error, setError] = useState('')
@@ -247,12 +252,6 @@ export function EpubReader({ book }: { book: Book }) {
                 value={settings.flow === 'paginated' ? 'Pages' : 'Scrolling'}
                 onClick={() => update({ flow: settings.flow === 'paginated' ? 'scrolled' : 'paginated' })}
               />
-              <SettingRow
-                icon="font"
-                label="Font"
-                value={fonts[settings.font]}
-                onClick={() => update({ font: cycle(Object.keys(fonts) as Settings['font'][], settings.font) })}
-              />
               <div className="setting-row">
                 <Icon name="textSize" />
                 <span>Text size</span>
@@ -273,6 +272,23 @@ export function EpubReader({ book }: { book: Book }) {
                     <Icon name="plus" size={16} />
                   </button>
                 </span>
+              </div>
+            </MenuSection>
+
+            <MenuSection title="Font">
+              <div className="font-choices" role="radiogroup" aria-label="Font">
+                {(Object.keys(fonts) as FontName[]).map((name) => (
+                  <button
+                    key={name}
+                    role="radio"
+                    aria-checked={settings.font === name}
+                    style={{ fontFamily: fonts[name].family || undefined }}
+                    onClick={() => update({ font: name })}
+                  >
+                    <span className="font-sample" aria-hidden>Aa</span>
+                    <span className="font-name">{fonts[name].label}</span>
+                  </button>
+                ))}
               </div>
             </MenuSection>
 

@@ -11,6 +11,10 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@fontsource-variable/atkinson-hyperlegible-next": "^5.3.0",
+    "@fontsource-variable/eb-garamond": "^5.3.0",
+    "@fontsource-variable/literata": "^5.3.0",
+    "@fontsource/opendyslexic": "^5.3.0",
     "@tanstack/react-query": "^5.104.3",
     "foliate-js": "^1.0.1",
     "react": "^19.2.8",
