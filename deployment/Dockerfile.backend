@@ -16,6 +16,11 @@ FROM gcr.io/distroless/static-debian12:nonroot AS runtime
 ENV NOVIL_ADDR=:8080 \
     NOVIL_DATA_DIR=/config
 
+# The base image's /home/nonroot is only open to its own user, but compose
+# runs the container as another one, which then can't even check for a .env
+# there. Settings come from the environment (compose env_file) instead.
+WORKDIR /
+
 COPY --from=build /out/novil /novil
 # Lets the default nonroot user write to /config when it is a named volume.
 COPY --from=build --chown=65532:65532 /out/config /config
