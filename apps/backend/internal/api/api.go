@@ -18,6 +18,7 @@ import (
 
 	"novil/backend/internal/archive"
 	"novil/backend/internal/auth"
+	"novil/backend/internal/cover"
 	"novil/backend/internal/scanner"
 	"novil/backend/internal/store"
 )
@@ -45,6 +46,8 @@ type Options struct {
 	// LoginInterval. Zero means 5 and 12s, so 5 per minute in the long run.
 	LoginBurst    int
 	LoginInterval time.Duration
+	// Covers makes covers from book files. Nil means a new one.
+	Covers *cover.Generator
 }
 
 // New returns the API handler.
@@ -54,6 +57,9 @@ func New(st *store.Store, tokens *auth.Tokens, opts Options) http.Handler {
 	}
 	if opts.LoginInterval == 0 {
 		opts.LoginInterval = 12 * time.Second
+	}
+	if opts.Covers == nil {
+		opts.Covers = cover.NewGenerator()
 	}
 	s := &Server{
 		store:          st,
@@ -72,6 +78,11 @@ func New(st *store.Store, tokens *auth.Tokens, opts Options) http.Handler {
 
 	mux.HandleFunc("GET /api/users", s.guard(adminOnly, s.listUsers))
 	mux.HandleFunc("POST /api/users", s.guard(adminOnly, s.createUser))
+	mux.HandleFunc("PUT /api/me/avatar", s.guard(member, s.setMyAvatar))
+	mux.HandleFunc("DELETE /api/me/avatar", s.guard(member, s.deleteMyAvatar))
+	mux.HandleFunc("GET /api/users/{id}/avatar", s.guard(member, s.getAvatar))
+	mux.HandleFunc("DELETE /api/users/{id}/avatar", s.guard(adminOnly, s.deleteUserAvatar))
+	mux.HandleFunc("PATCH /api/users/{id}", s.guard(adminOnly, s.updateUser))
 	mux.HandleFunc("PUT /api/users/{id}/password", s.guard(adminOnly, s.resetPassword))
 	mux.HandleFunc("DELETE /api/users/{id}", s.guard(adminOnly, s.deleteUser))
 
@@ -90,9 +101,11 @@ func New(st *store.Store, tokens *auth.Tokens, opts Options) http.Handler {
 
 	mux.HandleFunc("GET /api/books/{id}", s.guard(member, s.getBook))
 	mux.HandleFunc("PATCH /api/books/{id}", s.guard(adminOnly, s.updateBook))
+	mux.HandleFunc("GET /api/books/{id}/cover", s.guard(member, s.getCover))
+	mux.HandleFunc("PUT /api/books/{id}/cover", s.guard(adminOnly, s.setCover))
+	mux.HandleFunc("DELETE /api/books/{id}/cover", s.guard(adminOnly, s.deleteCover))
 	mux.HandleFunc("GET /api/books/{id}/file", s.guard(member, s.getBookFile))
 	mux.HandleFunc("GET /api/books/{id}/pages/{page}", s.guard(member, s.getPage))
-	mux.HandleFunc("GET /api/books/{id}/cover", s.guard(member, s.getCover))
 	mux.HandleFunc("GET /api/books/{id}/progress", s.guard(member, s.getProgress))
 	mux.HandleFunc("PUT /api/books/{id}/progress", s.guard(member, s.setProgress))
 

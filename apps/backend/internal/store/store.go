@@ -54,10 +54,15 @@ type Book struct {
 	Description string   `json:"description"`
 	Edited      []string `json:"edited"`
 
+	// CustomCover is true when an admin uploaded the cover.
+	CustomCover bool `json:"customCover"`
+
 	ReadPage     int    `json:"readPage"`
 	ReadPosition string `json:"readPosition"`
 	Completed    bool   `json:"completed"`
 	Path         string `json:"-"`
+	// FileKey changes when the file does; see CachedCover.
+	FileKey string `json:"-"`
 }
 
 // MetadataFields are the book fields an admin can edit, named as in JSON
@@ -127,7 +132,7 @@ func (s *Store) SetAllowUploads(id int64, allow bool) (Library, error) {
 
 const seriesSelect = `
 	SELECT s.id, s.library_id, s.name, COUNT(b.id),
-		(SELECT id FROM books WHERE series_id = s.id AND format IN ('cbz', 'epub') ORDER BY sort_order LIMIT 1),
+		(SELECT id FROM books WHERE series_id = s.id ORDER BY sort_order LIMIT 1),
 		COUNT(CASE WHEN p.completed THEN 1 END),
 		COUNT(CASE WHEN p.page > 0 AND NOT p.completed THEN 1 END),
 		COALESCE(MAX(b.created_at), ''), MAX(p.updated_at)
@@ -216,6 +221,7 @@ func (s *Store) GetSeries(userID, id int64) (Series, error) {
 const bookSelect = `
 	SELECT b.id, b.series_id, s.name, b.format, b.size, b.page_count, b.created_at,
 		COALESCE(p.page, 0), COALESCE(p.position, ''), COALESCE(p.completed, 0), b.path,
+		b.size || '-' || b.mod_time, EXISTS (SELECT 1 FROM book_covers WHERE book_id = b.id),
 		b.title, o.title, b.author, o.author, b.language, o.language,
 		b.released, o.released, b.description, o.description
 	FROM books b
@@ -229,6 +235,7 @@ func scanBook(row interface{ Scan(...any) error }) (Book, error) {
 	var override [5]sql.NullString
 	err := row.Scan(&b.ID, &b.SeriesID, &b.SeriesName, &b.Format, &b.Size, &b.PageCount, &b.AddedAt,
 		&b.ReadPage, &b.ReadPosition, &b.Completed, &b.Path,
+		&b.FileKey, &b.CustomCover,
 		&fromFile[0], &override[0], &fromFile[1], &override[1], &fromFile[2], &override[2],
 		&fromFile[3], &override[3], &fromFile[4], &override[4])
 	if err != nil {
