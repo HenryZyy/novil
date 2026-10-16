@@ -89,6 +89,7 @@ func New(st *store.Store, tokens *auth.Tokens, opts Options) http.Handler {
 	mux.HandleFunc("GET /api/stats", s.guard(adminOnly, s.stats))
 
 	mux.HandleFunc("GET /api/books/{id}", s.guard(member, s.getBook))
+	mux.HandleFunc("PATCH /api/books/{id}", s.guard(adminOnly, s.updateBook))
 	mux.HandleFunc("GET /api/books/{id}/file", s.guard(member, s.getBookFile))
 	mux.HandleFunc("GET /api/books/{id}/pages/{page}", s.guard(member, s.getPage))
 	mux.HandleFunc("GET /api/books/{id}/progress", s.guard(member, s.getProgress))

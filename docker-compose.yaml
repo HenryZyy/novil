@@ -13,4 +13,5 @@ services:
       - "8080:8080"
     volumes:
       - ./config:/config
-      - ./library:/library:ro
+      # Writable, so admins can upload books into it.
+      - ./library:/library
