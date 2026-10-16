@@ -4,5 +4,7 @@
 apps/backend/data/
 apps/backend/novil
 
-config/
-library/
+# Docker volume folders in the repo root. The leading slash anchors them, so
+# they don't also match folders like apps/backend/internal/config.
+/config/
+/library/

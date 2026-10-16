@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -26,6 +27,9 @@ func main() {
 }
 
 func run() error {
+	if err := config.LoadEnvFile(".env"); err != nil {
+		return fmt.Errorf("load .env: %w", err)
+	}
 	cfg := config.Load()
 	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
 		return err

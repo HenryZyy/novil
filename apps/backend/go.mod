@@ -2,7 +2,10 @@ module novil/backend
 
 go 1.27.2
 
-require modernc.org/sqlite v1.60.1
+require (
+	github.com/joho/godotenv v1.5.1
+	modernc.org/sqlite v1.60.1
+)
 
 require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
