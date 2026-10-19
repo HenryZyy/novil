@@ -79,6 +79,8 @@ export type Book = {
   // "2006", "2006-01" or "2006-01-02", or empty.
   released: string
   description: string
+  // ISBN-13, or empty.
+  isbn: string
   edited: MetadataField[]
   // True when an admin uploaded the cover instead of the file's.
   customCover: boolean
@@ -117,6 +119,8 @@ export type IsbnBook = {
   published: string
   coverUrl: string
   pages: number
+  // From Google Books only, so often empty.
+  description: string
 }
 
 export type BookRequest = {
@@ -184,7 +188,7 @@ export type ReadingSession = {
 export const highlightColors = ['yellow', 'green', 'blue', 'pink', 'purple'] as const
 export type HighlightColor = (typeof highlightColors)[number]
 
-export const metadataFields = ['title', 'author', 'language', 'released', 'description'] as const
+export const metadataFields = ['title', 'author', 'language', 'released', 'description', 'isbn'] as const
 export type MetadataField = (typeof metadataFields)[number]
 
 export type ScanResult = {
@@ -269,6 +273,8 @@ export const api = {
   books: (seriesId: number) => request<Book[]>(`/api/series/${seriesId}/books`),
   book: (id: number) => request<Book>(`/api/books/${id}`),
   setCover: (bookId: number, image: Blob) => request<Book>(`/api/books/${bookId}/cover`, { method: 'PUT', body: image }),
+  // The cover the book databases have for an ISBN.
+  setCoverFromIsbn: (bookId: number, isbn: string) => request<Book>(`/api/books/${bookId}/cover/isbn`, json('PUT', { isbn })),
   deleteCover: (bookId: number) => request<Book>(`/api/books/${bookId}/cover`, { method: 'DELETE' }),
   // A string replaces the file's value, null goes back to it.
   updateBook: (id: number, changes: Partial<Record<MetadataField, string | null>>) =>

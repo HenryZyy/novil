@@ -2623,6 +2623,54 @@ button:not(:disabled):active,
   border-top: 1px solid var(--line);
 }
 
+.isbn-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.isbn-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.isbn-found {
+  display: flex;
+  gap: 0.85rem;
+  margin-top: 0.5rem;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 5%, var(--panel));
+  animation: dropdown-in 0.15s var(--ease);
+}
+
+.isbn-found .cover {
+  flex-shrink: 0;
+  width: 3.5rem;
+  height: auto;
+  aspect-ratio: 2 / 3;
+  border-radius: 4px;
+  object-fit: cover;
+}
+
+.isbn-found > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.isbn-found .actions {
+  margin-top: 0.25rem;
+}
+
+.isbn-found .checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.875rem;
+}
+
 .dialog h2 {
   margin: 0;
 }

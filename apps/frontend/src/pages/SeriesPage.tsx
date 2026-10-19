@@ -162,10 +162,18 @@ function seriesDetails(books: Book[], readCount: number) {
     ['Format', unique(books.map((b) => b.format.toUpperCase())).join(', ')],
     ['Pages', books.some((b) => b.pageCount) ? books.reduce((n, b) => n + b.pageCount, 0).toLocaleString() : ''],
     ['Size', formatSize(books.reduce((n, b) => n + b.size, 0))],
+    // Each volume has its own ISBN, so only a single book shows one.
+    ['ISBN', books.length === 1 ? formatIsbn(books[0].isbn) : ''],
     ...(books.length > 1 ? [['Books', `${plural(books.length, 'book')} · ${readCount} read`]] : []),
     ['Added', formatDate(books.map((b) => b.addedAt).sort().at(-1)?.slice(0, 10) ?? '')],
   ].filter(([, value]) => value) as [string, string][]
   return { list, description: withoutTitle(books.find((b) => b.description), books[0]?.seriesName) }
+}
+
+// The prefix and check digit apart: 978-044101359-3. Splitting the rest
+// needs the ISBN agencies' ranges.
+function formatIsbn(isbn: string) {
+  return isbn.length === 13 ? `${isbn.slice(0, 3)}-${isbn.slice(3, 12)}-${isbn.slice(12)}` : isbn
 }
 
 // Descriptions often start with the book's title on its own line, which the
