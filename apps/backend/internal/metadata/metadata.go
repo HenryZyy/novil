@@ -16,6 +16,8 @@ type Metadata struct {
 	// Released is the publication date as "2006", "2006-01" or "2006-01-02".
 	Released    string
 	Description string
+	// ISBN is the ISBN-13, if the file names a valid one.
+	ISBN string
 }
 
 // Read returns the metadata of a book file. Formats without readable

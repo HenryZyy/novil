@@ -4,6 +4,8 @@ import (
 	"archive/zip"
 	"fmt"
 	"strings"
+
+	"novil/backend/internal/isbn"
 )
 
 // Many comic archives carry a ComicInfo.xml, the format of the ComicRack app
@@ -33,6 +35,7 @@ func readComicInfo(path string) (Metadata, error) {
 		Month       int    `xml:"Month"`
 		Day         int    `xml:"Day"`
 		Summary     string `xml:"Summary"`
+		GTIN        string `xml:"GTIN"`
 	}
 	if err := decodeXML(&zr.Reader, name, &ci); err != nil {
 		return Metadata{}, err
@@ -43,6 +46,9 @@ func readComicInfo(path string) (Metadata, error) {
 		Author:      clean(ci.Writer),
 		Language:    clean(ci.LanguageISO),
 		Description: plainText(ci.Summary),
+	}
+	if code, err := isbn.Normalize(ci.GTIN); err == nil {
+		md.ISBN = code
 	}
 	switch {
 	case ci.Year > 0 && ci.Month > 0 && ci.Day > 0:

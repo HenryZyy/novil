@@ -7,6 +7,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"novil/backend/internal/isbn"
 	"novil/backend/internal/metadata"
 	"novil/backend/internal/store"
 )
@@ -18,6 +19,7 @@ var maxFieldLength = map[string]int{
 	"language":    35,
 	"released":    10,
 	"description": 20000,
+	"isbn":        20,
 }
 
 // updateBook lets admins correct a book's metadata and hide it from users.
@@ -64,6 +66,15 @@ func (s *Server) updateBook(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		v = strings.TrimSpace(v)
+		// Stored as ISBN-13, however it was written.
+		if field == "isbn" && v != "" {
+			code, err := isbn.Normalize(v)
+			if err != nil {
+				writeError(w, http.StatusBadRequest, "isbn isn't a valid ISBN; check for typos")
+				return
+			}
+			v = code
+		}
 		if msg := checkField(field, v); msg != "" {
 			writeError(w, http.StatusBadRequest, msg)
 			return

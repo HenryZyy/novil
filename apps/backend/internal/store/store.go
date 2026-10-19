@@ -60,6 +60,7 @@ type Book struct {
 	Language    string   `json:"language"`
 	Released    string   `json:"released"`
 	Description string   `json:"description"`
+	ISBN        string   `json:"isbn"`
 	Edited      []string `json:"edited"`
 
 	// CustomCover is true when an admin uploaded the cover.
@@ -77,7 +78,7 @@ type Book struct {
 
 // MetadataFields are the book fields an admin can edit, named as in JSON
 // and in the books and book_overrides tables.
-var MetadataFields = []string{"title", "author", "language", "released", "description"}
+var MetadataFields = []string{"title", "author", "language", "released", "description", "isbn"}
 
 type Progress struct {
 	BookID int64 `json:"bookId"`
@@ -260,7 +261,7 @@ const bookSelect = `
 		COALESCE(p.page, 0), COALESCE(p.position, ''), COALESCE(p.completed, 0), b.path,
 		b.size || '-' || b.mod_time, EXISTS (SELECT 1 FROM book_covers WHERE book_id = b.id), b.hidden,
 		b.title, o.title, b.author, o.author, b.language, o.language,
-		b.released, o.released, b.description, o.description
+		b.released, o.released, b.description, o.description, b.isbn, o.isbn
 	FROM books b
 	JOIN series s ON s.id = b.series_id
 	LEFT JOIN progress p ON p.book_id = b.id AND p.user_id = ?1
@@ -268,18 +269,18 @@ const bookSelect = `
 
 func scanBook(row interface{ Scan(...any) error }) (Book, error) {
 	var b Book
-	var fromFile [5]string
-	var override [5]sql.NullString
+	var fromFile [6]string
+	var override [6]sql.NullString
 	err := row.Scan(&b.ID, &b.SeriesID, &b.SeriesName, &b.Format, &b.Size, &b.PageCount, &b.AddedAt,
 		&b.ReadPage, &b.ReadPosition, &b.Completed, &b.Path,
 		&b.FileKey, &b.CustomCover, &b.Hidden,
 		&fromFile[0], &override[0], &fromFile[1], &override[1], &fromFile[2], &override[2],
-		&fromFile[3], &override[3], &fromFile[4], &override[4])
+		&fromFile[3], &override[3], &fromFile[4], &override[4], &fromFile[5], &override[5])
 	if err != nil {
 		return b, err
 	}
 	b.Edited = []string{}
-	for i, field := range []*string{&b.Title, &b.Author, &b.Language, &b.Released, &b.Description} {
+	for i, field := range []*string{&b.Title, &b.Author, &b.Language, &b.Released, &b.Description, &b.ISBN} {
 		*field = fromFile[i]
 		if override[i].Valid {
 			*field = override[i].String
@@ -314,7 +315,7 @@ func (s *Store) SetMetadata(bookID int64, changes map[string]*string) error {
 	// Tidy up books that are back to their file's values.
 	if _, err := tx.Exec(`
 		DELETE FROM book_overrides WHERE book_id = ? AND title IS NULL AND author IS NULL
-		AND language IS NULL AND released IS NULL AND description IS NULL`, bookID); err != nil {
+		AND language IS NULL AND released IS NULL AND description IS NULL AND isbn IS NULL`, bookID); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -513,8 +514,8 @@ func (s *Store) sync(libraryID int64, found []scanner.Series, cleanup string, ar
 			var bookID int64
 			err := tx.QueryRow(`
 				INSERT INTO books (series_id, title, path, format, size, mod_time, page_count, sort_order,
-					author, language, released, description, created_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+					author, language, released, description, isbn, created_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 				ON CONFLICT (path) DO UPDATE SET
 					series_id = excluded.series_id, title = excluded.title, format = excluded.format,
 					-- Scans don't count a PDF's pages (see PDFsWithoutPageCount),
@@ -523,10 +524,10 @@ func (s *Store) sync(libraryID int64, found []scanner.Series, cleanup string, ar
 						AND books.mod_time = excluded.mod_time THEN books.page_count ELSE excluded.page_count END,
 					size = excluded.size, mod_time = excluded.mod_time, sort_order = excluded.sort_order,
 					author = excluded.author, language = excluded.language,
-					released = excluded.released, description = excluded.description
+					released = excluded.released, description = excluded.description, isbn = excluded.isbn
 				RETURNING id`,
 				seriesID, b.Title, b.Path, b.Format, b.Size, b.ModTime.UTC().Format(time.RFC3339), b.PageCount, i,
-				b.Metadata.Author, b.Metadata.Language, b.Metadata.Released, b.Metadata.Description,
+				b.Metadata.Author, b.Metadata.Language, b.Metadata.Released, b.Metadata.Description, b.Metadata.ISBN,
 			).Scan(&bookID)
 			if err != nil {
 				return ScanResult{}, err

@@ -100,6 +100,7 @@ a `code` to check instead of the message:
 | `GET /api/books/{id}/cover` | user | The cover as a JPEG, see below |
 | `PUT /api/books/{id}/cover` | admin | Upload a cover image |
 | `DELETE /api/books/{id}/cover` | admin | Go back to the automatic cover |
+| `PUT /api/books/{id}/cover/isbn` | admin | `{"isbn"}` (or the book's own ISBN without a body) uses the cover the book databases have |
 | `GET /api/books/{id}/file` | user | Download the book file |
 | `GET /api/books/{id}/pages/{n}` | user | Page `n` (from 1) of a CBZ as an image, or of a PDF as a JPEG of at most 1600×2400 |
 | `GET /api/books/{id}/progress` | user | Your progress: `{"bookId", "page", "completed", "updatedAt"}` |
@@ -133,13 +134,16 @@ Books carry `title`, `author`, `language`, `released` (publication date as
 `addedAt` (when uploaded or first scanned), `pageCount` (CBZ and PDF, 0 for
 EPUBs; a PDF's pages are counted in the background after a scan, or when it's
 first opened),
-`size` (bytes) and `format`.
+`size` (bytes), `format` and `isbn` (ISBN-13, or empty).
 
-Scans and uploads read them from the file: the package document of an EPUB,
-the `ComicInfo.xml` of a CBZ. PDFs only get their file name as the title for
-now. Empty fields are unknown.
+Scans and uploads read them from the file: the package document of an EPUB
+(its ISBN from a `dc:identifier`), the `ComicInfo.xml` of a CBZ (its ISBN from
+`GTIN`). PDFs only get their file name as the title; an admin can add their
+ISBN and fill in the rest from it (`GET /api/isbn/{isbn}`, see book
+requests). Empty fields are unknown.
 
-Admins can correct them per book with `PATCH /api/books/{id}`: a string
+Admins can correct them per book with `PATCH /api/books/{id}` (an `isbn` in
+any ISBN-10 or -13 spelling is stored as ISBN-13; typos are refused): a string
 replaces the file's value, `null` goes back to it, and fields left out stay
 unchanged. Scans never overwrite these edits. `edited` lists the fields an
 admin set:

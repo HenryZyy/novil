@@ -59,6 +59,9 @@ type Options struct {
 	// LookupISBN finds the book of an ISBN for requests. Nil means none
 	// is ever found, so books can't be requested.
 	LookupISBN isbn.Lookup
+	// FetchCover downloads a cover LookupISBN found. Nil means
+	// isbn.FetchCover.
+	FetchCover isbn.Fetcher
 }
 
 // New returns the API handler.
@@ -71,6 +74,9 @@ func New(st *store.Store, tokens *auth.Tokens, opts Options) http.Handler {
 	}
 	if opts.LookupBurst == 0 {
 		opts.LookupBurst = 10
+	}
+	if opts.FetchCover == nil {
+		opts.FetchCover = isbn.FetchCover
 	}
 	if opts.Covers == nil {
 		opts.Covers = cover.NewGenerator()
@@ -125,6 +131,7 @@ func New(st *store.Store, tokens *auth.Tokens, opts Options) http.Handler {
 	mux.HandleFunc("GET /api/books/{id}/cover", s.guard(member, s.getCover))
 	mux.HandleFunc("PUT /api/books/{id}/cover", s.guard(adminOnly, s.setCover))
 	mux.HandleFunc("DELETE /api/books/{id}/cover", s.guard(adminOnly, s.deleteCover))
+	mux.HandleFunc("PUT /api/books/{id}/cover/isbn", s.guard(adminOnly, s.limitLookups(s.setCoverFromISBN)))
 	mux.HandleFunc("GET /api/books/{id}/file", s.guard(member, s.getBookFile))
 	mux.HandleFunc("GET /api/books/{id}/pages/{page}", s.guard(member, s.getPage))
 	mux.HandleFunc("GET /api/books/{id}/progress", s.guard(member, s.getProgress))

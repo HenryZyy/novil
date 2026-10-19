@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"slices"
@@ -24,6 +25,8 @@ type Info struct {
 	Published string `json:"published"`
 	CoverURL  string `json:"coverUrl"`
 	Pages     int    `json:"pages"`
+	// Description comes from Google Books only.
+	Description string `json:"description"`
 }
 
 // Lookup is a function that finds the book of an ISBN-13.
@@ -63,12 +66,13 @@ func online(ctx context.Context, isbn, googleKey string) (Info, error) {
 		return o.info, nil
 	}
 	return Info{
-		ISBN:      isbn,
-		Title:     firstNonEmpty(g.info.Title, o.info.Title),
-		Authors:   firstNonEmpty(g.info.Authors, o.info.Authors),
-		Published: firstNonEmpty(g.info.Published, o.info.Published),
-		CoverURL:  firstNonEmpty(o.info.CoverURL, g.info.CoverURL),
-		Pages:     max(g.info.Pages, o.info.Pages),
+		ISBN:        isbn,
+		Title:       firstNonEmpty(g.info.Title, o.info.Title),
+		Authors:     firstNonEmpty(g.info.Authors, o.info.Authors),
+		Published:   firstNonEmpty(g.info.Published, o.info.Published),
+		CoverURL:    firstNonEmpty(o.info.CoverURL, g.info.CoverURL),
+		Pages:       max(g.info.Pages, o.info.Pages),
+		Description: g.info.Description,
 	}, nil
 }
 
@@ -137,6 +141,7 @@ func googleBooks(ctx context.Context, isbn, key string) (Info, error) {
 				Authors       []string `json:"authors"`
 				PublishedDate string   `json:"publishedDate"`
 				PageCount     int      `json:"pageCount"`
+				Description   string   `json:"description"`
 				ImageLinks    struct {
 					Thumbnail string `json:"thumbnail"`
 				} `json:"imageLinks"`
@@ -161,6 +166,7 @@ func googleBooks(ctx context.Context, isbn, key string) (Info, error) {
 	return Info{
 		ISBN: isbn, Title: title, Authors: strings.Join(v.Authors, ", "), Published: v.PublishedDate,
 		CoverURL: strings.Replace(v.ImageLinks.Thumbnail, "http://", "https://", 1), Pages: v.PageCount,
+		Description: v.Description,
 	}, nil
 }
 
@@ -181,6 +187,33 @@ func addAuthor(names []string, name string) []string {
 		return names
 	}
 	return append(names, strings.Join(strings.Fields(name), " "))
+}
+
+// Fetcher downloads a cover image a Lookup found.
+type Fetcher func(ctx context.Context, url string) ([]byte, error)
+
+// maxCoverBytes keeps a misbehaving server from sending endless data.
+const maxCoverBytes = 20 << 20
+
+// FetchCover downloads a cover from the HTTPS URL a lookup returned.
+func FetchCover(ctx context.Context, u string) ([]byte, error) {
+	if !strings.HasPrefix(u, "https://") {
+		return nil, fmt.Errorf("cover URL %q isn't HTTPS", u)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "novil (self-hosted book server)")
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("%s: %s", u, resp.Status)
+	}
+	return io.ReadAll(io.LimitReader(resp.Body, maxCoverBytes))
 }
 
 func firstNonEmpty(values ...string) string {

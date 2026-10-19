@@ -10,6 +10,8 @@ import (
 	"path"
 	"regexp"
 	"strings"
+
+	"novil/backend/internal/isbn"
 )
 
 // packageDoc is the part of an EPUB's package document (.opf) we use.
@@ -27,7 +29,11 @@ type packageDoc struct {
 			Value string `xml:",chardata"`
 		} `xml:"date"`
 		Descriptions []string `xml:"description"`
-		Metas        []struct {
+		Identifiers  []struct {
+			Scheme string `xml:"scheme,attr"` // EPUB 2: opf:scheme="ISBN"
+			Value  string `xml:",chardata"`
+		} `xml:"identifier"`
+		Metas []struct {
 			Refines  string `xml:"refines,attr"`
 			Property string `xml:"property,attr"`
 			Name     string `xml:"name,attr"`    // EPUB 2: <meta name="cover" content="id">
@@ -90,6 +96,20 @@ func readEPUB(file string) (Metadata, error) {
 	}
 	if len(m.Descriptions) > 0 {
 		md.Description = plainText(m.Descriptions[0])
+	}
+	// Identifiers are often UUIDs; an ISBN is one whose check digit works,
+	// written like "urn:isbn:978…" or plain.
+	for _, id := range m.Identifiers {
+		v := strings.TrimSpace(id.Value)
+		for _, prefix := range []string{"urn:isbn:", "isbn:"} {
+			if len(v) > len(prefix) && strings.EqualFold(v[:len(prefix)], prefix) {
+				v = v[len(prefix):]
+			}
+		}
+		if code, err := isbn.Normalize(v); err == nil {
+			md.ISBN = code
+			break
+		}
 	}
 
 	// Creators can be authors, illustrators, editors... EPUB 2 says which in

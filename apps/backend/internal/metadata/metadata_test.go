@@ -132,3 +132,23 @@ func TestEPUBWithHTMLEntities(t *testing.T) {
 		t.Errorf("got %+v", md)
 	}
 }
+
+func TestISBN(t *testing.T) {
+	dir := t.TempDir()
+	epub := filepath.Join(dir, "book.epub")
+	testutil.WriteEPUB(t, epub, `<dc:identifier>urn:uuid:0b8f8a1e-1111-2222-3333-444455556666</dc:identifier>
+		<dc:identifier opf:scheme="ISBN">urn:isbn:0-441-01359-7</dc:identifier>`)
+	if md, err := Read(epub, "epub"); err != nil || md.ISBN != "9780441013593" {
+		t.Errorf("epub: %+v, %v", md, err)
+	}
+	// A number that isn't a valid ISBN is no ISBN.
+	testutil.WriteEPUB(t, epub, `<dc:identifier>9780441013594</dc:identifier>`)
+	if md, _ := Read(epub, "epub"); md.ISBN != "" {
+		t.Errorf("invalid ISBN read: %q", md.ISBN)
+	}
+	cbz := filepath.Join(dir, "book.cbz")
+	testutil.WriteZip(t, cbz, map[string]string{"01.jpg": "", "ComicInfo.xml": `<ComicInfo><GTIN>978-0-06-294150-3</GTIN></ComicInfo>`})
+	if md, err := Read(cbz, "cbz"); err != nil || md.ISBN != "9780062941503" {
+		t.Errorf("cbz: %+v, %v", md, err)
+	}
+}

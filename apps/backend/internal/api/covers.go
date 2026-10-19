@@ -2,7 +2,10 @@ package api
 
 import (
 	"bytes"
+	"cmp"
+	"context"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"time"
@@ -125,5 +128,52 @@ func (s *Server) deleteCover(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	b, err := s.store.GetBook(currentUser(r).ID, b.ID)
+	respond(w, b, err)
+}
+
+// setCoverFromISBN uses the cover the book databases have for an ISBN,
+// {"isbn": "978…"}, or for the book's own ISBN without one.
+func (s *Server) setCoverFromISBN(w http.ResponseWriter, r *http.Request) {
+	b, ok := s.book(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		ISBN string `json:"isbn"`
+	}
+	if err := decodeJSON(w, r, &req); err != nil && !errors.Is(err, io.EOF) {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	_, existing, info, ok := s.findBook(w, r, cmp.Or(req.ISBN, b.ISBN))
+	if !ok {
+		return
+	}
+	url := info.CoverURL
+	if existing != nil {
+		url = existing.CoverURL
+	}
+	if url == "" {
+		writeError(w, http.StatusNotFound, "the book databases have no cover for this ISBN")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+	defer cancel()
+	data, err := s.opts.FetchCover(ctx, url)
+	if err != nil {
+		slog.Warn("can't download a cover", "url", url, "err", err)
+		writeError(w, http.StatusBadGateway, "the cover couldn't be downloaded, try again later")
+		return
+	}
+	jpeg, err := cover.FromUpload(bytes.NewReader(data))
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "the book database sent something that isn't a usable image")
+		return
+	}
+	if err := s.store.SetCustomCover(b.ID, jpeg); err != nil {
+		internalError(w, err)
+		return
+	}
+	b, err = s.store.GetBook(currentUser(r).ID, b.ID)
 	respond(w, b, err)
 }
