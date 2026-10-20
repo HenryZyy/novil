@@ -1,5 +1,5 @@
 import { Link, useSearchParams } from 'react-router'
-import type { BookRequest } from '../../api/client'
+import { requestCoverUrl, type BookRequest } from '../../api/client'
 import { useDeleteRequest, useRequests, useUpdateRequest } from '../../api/queries'
 import { Dropdown, type Choice } from '../../components/Dropdown'
 import { RequestCover, RequestStatus } from '../../components/RequestCover'
@@ -61,7 +61,7 @@ function RequestRow({ request: r }: { request: BookRequest }) {
 
   return (
     <li className="request-item">
-      <RequestCover url={r.coverUrl} title={r.title} />
+      <RequestCover url={requestCoverUrl(r)} title={r.title} />
       <div className="request-info">
         <strong>{r.title}</strong>
         <span className="muted">{[r.authors, r.published, `ISBN ${r.isbn}`].filter(Boolean).join(' · ')}</span>

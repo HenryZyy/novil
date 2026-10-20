@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { Link } from 'react-router'
-import { ApiError, api, type BookRequest, type IsbnBook } from '../api/client'
+import { ApiError, api, requestCoverUrl, type BookRequest, type IsbnBook } from '../api/client'
 import { useMyRequests, useRequestBook, useWithdrawRequest } from '../api/queries'
 import { Icon } from '../components/Icon'
 import { RequestCover, RequestStatus } from '../components/RequestCover'
@@ -106,7 +106,8 @@ function RequestForm() {
       )}
       {found && (
         <div className="isbn-result">
-          <RequestCover url={found.book.coverUrl} title={found.book.title} />
+          {/* Already requested: novil has the cover. Else the database's, for a look. */}
+          <RequestCover url={found.request ? requestCoverUrl(found.request) : found.book.coverUrl} title={found.book.title} />
           <div>
             <h3>{found.book.title}</h3>
             <p className="muted">{[found.book.authors, found.book.published].filter(Boolean).join(' · ')}</p>
@@ -139,7 +140,7 @@ function MyRequest({ request: r }: { request: BookRequest }) {
   const withdraw = useWithdrawRequest()
   return (
     <li className="request-item">
-      <RequestCover url={r.coverUrl} title={r.title} />
+      <RequestCover url={requestCoverUrl(r)} title={r.title} />
       <div className="request-info">
         <strong>{r.title}</strong>
         <span className="muted">{[r.authors, r.published].filter(Boolean).join(' · ')}</span>

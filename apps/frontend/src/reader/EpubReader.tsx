@@ -146,6 +146,13 @@ export function EpubReader({ book }: { book: Book }) {
       notesRef.current.attach(view)
       container.current.append(view)
       view.addEventListener('relocate', (e) => setLocation((e as CustomEvent<Location>).detail))
+      // Links out of the book open here, not in foliate-js: only http(s),
+      // and without a way back to novil's page (noopener).
+      view.addEventListener('external-link', (e) => {
+        e.preventDefault()
+        const { href } = (e as CustomEvent<{ href: string }>).detail
+        if (/^https?:\/\//i.test(href)) window.open(href, '_blank', 'noopener,noreferrer')
+      })
       // Keys pressed while the book has focus happen inside its iframe.
       view.addEventListener('load', (e) => {
         const { doc } = (e as CustomEvent<{ doc: Document }>).detail

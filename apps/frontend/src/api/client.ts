@@ -334,5 +334,8 @@ export const isReadable = (book: Book) => book.format === 'epub' || book.pageCou
 export const coverUrl = (bookId: number, version = 0) =>
   `/api/books/${bookId}/cover${version ? `?v=${version}` : ''}`
 
+// A request's cover, saved by novil when the book was requested.
+export const requestCoverUrl = (request: BookRequest) => (request.coverUrl ? `/api/requests/${request.id}/cover` : '')
+
 export const pageUrl = (bookId: number, page: number) => `/api/books/${bookId}/pages/${page}`
 export const fileUrl = (bookId: number) => `/api/books/${bookId}/file`
