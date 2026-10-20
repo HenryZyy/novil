@@ -93,6 +93,7 @@ a `code` to check instead of the message:
 | `DELETE /api/series/{id}/lists/{list}` | user | Take it off again |
 | `GET /api/series/{id}` | user | One series |
 | `GET /api/series/{id}/books` | user | The books in a series |
+| `DELETE /api/series/{id}` | admin | Delete every book of a series **with their files**, like `DELETE /api/books/{id}` |
 | `PATCH /api/series/{id}` | admin | `{"hidden": true}` hides all its books, `false` shows them |
 | `GET /api/books?search=…&library={id}&hidden=…` | admin | All books, by series. `search` matches title, author and series; `hidden` is `hidden` or `visible` |
 | `GET /api/books/{id}` | user | One book |
@@ -203,7 +204,7 @@ key; set `NOVIL_GOOGLE_BOOKS_KEY` for reliable lookups.
 
 The server logs logins (`login`, `login_failed`), `logout`,
 `password_changed` and admin actions (`user_created`, `user_updated`,
-`user_deleted`, `password_reset`, `book_uploaded`, `book_deleted`, `library_scanned`,
+`user_deleted`, `password_reset`, `book_uploaded`, `book_deleted`, `series_deleted`, `library_scanned`,
 `request_updated`), each with the user, IP and device, read from the
 User-Agent (`deviceKind`: `phone`, `tablet` or `desktop`; `device` like
 `Firefox on Windows`). It keeps 90 days. Filter with a comma-separated

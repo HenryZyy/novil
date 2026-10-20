@@ -119,6 +119,7 @@ func New(st *store.Store, tokens *auth.Tokens, opts Options) http.Handler {
 	mux.HandleFunc("GET /api/series/{id}/books", s.guard(member, s.listBooks))
 	mux.HandleFunc("PUT /api/series/{id}/read", s.guard(member, s.setSeriesRead))
 	mux.HandleFunc("PATCH /api/series/{id}", s.guard(adminOnly, s.updateSeries))
+	mux.HandleFunc("DELETE /api/series/{id}", s.guard(adminOnly, s.deleteSeries))
 	mux.HandleFunc("PUT /api/series/{id}/lists/{list}", s.guard(member, s.setListed))
 	mux.HandleFunc("DELETE /api/series/{id}/lists/{list}", s.guard(member, s.setListed))
 	mux.HandleFunc("GET /api/continue", s.guard(member, s.continueReading))

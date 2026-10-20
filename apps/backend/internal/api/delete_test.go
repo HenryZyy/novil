@@ -70,3 +70,37 @@ func TestDeleteBook(t *testing.T) {
 		t.Errorf("log %+v", log)
 	}
 }
+
+func TestDeleteSeries(t *testing.T) {
+	env := newTestServer(t)
+	root := t.TempDir()
+	testutil.WriteCBZ(t, filepath.Join(root, "Akira", "Vol 1.cbz"), "01.jpg")
+	testutil.WriteCBZ(t, filepath.Join(root, "Akira", "Vol 2.cbz"), "01.jpg")
+	testutil.WriteCBZ(t, filepath.Join(root, "Berserk", "Vol 1.cbz"), "01.jpg")
+	env.admin.do("POST", "/api/libraries", libraryJSON(t, "Manga", root), http.StatusCreated, nil)
+	env.admin.do("POST", "/api/libraries/1/scan", "", http.StatusOK, nil)
+	var series []store.Series
+	env.admin.do("GET", "/api/series", "", http.StatusOK, &series)
+	akira := itoa(series[0].ID)
+	// Hidden books go too.
+	env.admin.do("PATCH", "/api/books/2", `{"hidden":true}`, http.StatusOK, nil)
+	addReader(t, env).do("DELETE", "/api/series/"+akira, "", http.StatusForbidden, nil)
+
+	env.admin.do("DELETE", "/api/series/"+akira, "", http.StatusNoContent, nil)
+	if _, err := os.Stat(filepath.Join(root, "Akira")); !os.IsNotExist(err) {
+		t.Errorf("the folder is still there: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "Berserk", "Vol 1.cbz")); err != nil {
+		t.Errorf("the other series went too: %v", err)
+	}
+	env.admin.do("GET", "/api/series", "", http.StatusOK, &series)
+	if len(series) != 1 || series[0].Name != "Berserk" {
+		t.Errorf("series left %+v", series)
+	}
+	env.admin.do("DELETE", "/api/series/"+akira, "", http.StatusNotFound, nil)
+	var log []store.LogEntry
+	env.admin.do("GET", "/api/logs?event=series_deleted", "", http.StatusOK, &log)
+	if len(log) != 1 || log[0].Detail != "Akira (2 books) from Manga" {
+		t.Errorf("log %+v", log)
+	}
+}
