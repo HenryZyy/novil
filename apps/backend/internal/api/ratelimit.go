@@ -66,12 +66,17 @@ func (l *limiter) sweep(now time.Time) {
 func (s *Server) limitAttempts(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if d := s.loginLimiter.wait(clientKey(clientIP(r, s.trustedProxies))); d > 0 {
-			w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(d.Seconds()))))
-			writeCodedError(w, http.StatusTooManyRequests, "too_many_requests", "too many attempts, try again later")
+			tooMany(w, d, "too many attempts, try again later")
 			return
 		}
 		next(w, r)
 	}
+}
+
+// tooMany answers 429 with how long to wait, in whole seconds.
+func tooMany(w http.ResponseWriter, wait time.Duration, msg string) {
+	w.Header().Set("Retry-After", strconv.Itoa(max(1, int(math.Ceil(wait.Seconds())))))
+	writeCodedError(w, http.StatusTooManyRequests, "too_many_requests", msg)
 }
 
 // clientIP returns the address the request came from. Behind a reverse proxy

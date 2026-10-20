@@ -218,3 +218,19 @@ func TestFit(t *testing.T) {
 		}
 	}
 }
+
+// Every user can upload avatars, so they're held to fewer pixels than
+// covers: a 5000 x 5000 image is fine as a cover, not as an avatar.
+func TestAvatarPixelLimit(t *testing.T) {
+	big := testutil.PNG(t, 1, 1, red)
+	binary.BigEndian.PutUint32(big[16:20], 5000)
+	binary.BigEndian.PutUint32(big[20:24], 5000)
+	binary.BigEndian.PutUint32(big[29:33], crc32.ChecksumIEEE(big[12:29]))
+	if _, err := AvatarFromUpload(bytes.NewReader(big)); err == nil || !strings.Contains(err.Error(), "too large") {
+		t.Errorf("avatar: %v, want a too large error", err)
+	}
+	// As a cover, the header passes; the 1-pixel data then doesn't decode.
+	if _, err := FromUpload(bytes.NewReader(big)); err != nil && strings.Contains(err.Error(), "too large") {
+		t.Errorf("cover: %v", err)
+	}
+}

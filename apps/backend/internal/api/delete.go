@@ -15,10 +15,26 @@ var errOutsideLibrary = errors.New("the book's file is outside its library folde
 
 // insideLibrary reports whether a book's file is in its library's folder.
 // Scans only find files there, but a moved library folder could leave old
-// paths behind: nothing outside it is ever deleted.
+// paths behind, and a linked folder could point elsewhere: nothing outside
+// it is ever deleted. A file already gone counts as inside.
 func insideLibrary(lib store.Library, b store.Book) bool {
 	rel, err := filepath.Rel(lib.Path, b.Path)
-	return err == nil && rel != "." && filepath.IsLocal(rel)
+	if err != nil || rel == "." || !filepath.IsLocal(rel) {
+		return false
+	}
+	root, err := filepath.EvalSymlinks(lib.Path)
+	if err != nil {
+		return false
+	}
+	dir, err := filepath.EvalSymlinks(filepath.Dir(b.Path))
+	if errors.Is(err, fs.ErrNotExist) {
+		return true
+	}
+	if err != nil {
+		return false
+	}
+	rel, err = filepath.Rel(root, dir)
+	return err == nil && (rel == "." || filepath.IsLocal(rel))
 }
 
 // removeBook deletes a book's file from its library folder and the book

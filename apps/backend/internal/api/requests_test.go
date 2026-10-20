@@ -3,10 +3,13 @@ package api
 import (
 	"context"
 	"errors"
+	"image/color"
 	"net/http"
 	"path/filepath"
+	"strconv"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"novil/backend/internal/auth"
 	"novil/backend/internal/isbn"
@@ -19,6 +22,7 @@ func TestBookRequests(t *testing.T) {
 	env := newTestServerWith(t, Options{
 		LoginBurst:  1000,
 		LookupBurst: 1000,
+		RequestGap:  -1,
 		LookupISBN: func(ctx context.Context, code string) (isbn.Info, error) {
 			lookups.Add(1)
 			switch code {
@@ -106,6 +110,13 @@ func TestBookRequests(t *testing.T) {
 	if mine[0].Status != "added" || mine[0].BookID == nil {
 		t.Errorf("anna sees %+v", mine)
 	}
+	// Hidden from her, the book doesn't show, not even its ID.
+	env.admin.do("PATCH", "/api/books/"+itoa(books[0].ID), `{"hidden":true}`, http.StatusOK, nil)
+	anna.do("GET", "/api/me/requests", "", http.StatusOK, &mine)
+	if mine[0].BookID != nil {
+		t.Errorf("anna sees the hidden book %d", *mine[0].BookID)
+	}
+	env.admin.do("PATCH", "/api/books/"+itoa(books[0].ID), `{"hidden":false}`, http.StatusOK, nil)
 	var carl *client
 	{
 		hash, _ := auth.HashPassword("carl-password")
@@ -135,4 +146,107 @@ func TestBookRequests(t *testing.T) {
 	if len(mine) != 0 {
 		t.Errorf("after delete %+v", mine)
 	}
+}
+
+func TestSavedLookups(t *testing.T) {
+	png := testutil.PNG(t, 40, 60, color.RGBA{0, 128, 0, 255})
+	var lookups, fetches atomic.Int32
+	env := newTestServerWith(t, Options{
+		LoginBurst:  1000,
+		LookupBurst: 1000,
+		LookupISBN: func(ctx context.Context, code string) (isbn.Info, error) {
+			lookups.Add(1)
+			if code == "9780441013593" {
+				return isbn.Info{ISBN: code, Title: "Dune", CoverURL: "https://covers.example/dune.jpg"}, nil
+			}
+			return isbn.Info{}, isbn.ErrNotFound
+		},
+		FetchCover: func(ctx context.Context, url string) ([]byte, error) {
+			fetches.Add(1)
+			return png, nil
+		},
+	})
+	// The same ISBN, also when not found, is only looked up once.
+	for range 3 {
+		env.admin.do("GET", "/api/isbn/9780441013593", "", http.StatusOK, nil)
+		env.admin.do("GET", "/api/isbn/9790000000001", "", http.StatusNotFound, nil)
+	}
+	if n := lookups.Load(); n != 2 {
+		t.Errorf("%d lookups, want 2", n)
+	}
+
+	// A request saves its cover once; views don't download it again.
+	var req store.BookRequest
+	env.admin.do("POST", "/api/requests", `{"isbn":"9780441013593"}`, http.StatusCreated, &req)
+	for i := 0; i < 50; i++ {
+		if data, _, _ := env.store.RequestCover(req.ID); data != nil {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	for range 3 {
+		resp := env.admin.request("GET", "/api/requests/"+itoa(req.ID)+"/cover", "")
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK || resp.Header.Get("Content-Type") != "image/jpeg" {
+			t.Fatalf("cover: %d %s", resp.StatusCode, resp.Header.Get("Content-Type"))
+		}
+	}
+	if n := fetches.Load(); n != 1 {
+		t.Errorf("cover downloaded %d times, want 1", n)
+	}
+	if n := lookups.Load(); n != 2 {
+		t.Errorf("requesting looked it up again: %d lookups", n)
+	}
+	env.admin.do("GET", "/api/requests/999/cover", "", http.StatusNotFound, nil)
+	// Only for the people who asked, and admins.
+	other := addReader(t, env)
+	other.do("GET", "/api/requests/"+itoa(req.ID)+"/cover", "", http.StatusNotFound, nil)
+}
+
+func TestRequestCooldown(t *testing.T) {
+	found := func(ctx context.Context, code string) (isbn.Info, error) {
+		return isbn.Info{ISBN: code, Title: "Book " + code}, nil
+	}
+	books := []string{"9780441013593", "9780062941503", "9780804429573", "9780140449136"}
+
+	// Requests a day.
+	env := newTestServerWith(t, Options{LoginBurst: 1000, LookupBurst: 1000, LookupISBN: found, RequestsPerDay: 2, RequestGap: -1})
+	reader := addReader(t, env)
+	reader.do("POST", "/api/requests", `{"isbn":"`+books[0]+`"}`, http.StatusCreated, nil)
+	reader.do("POST", "/api/requests", `{"isbn":"`+books[1]+`"}`, http.StatusCreated, nil)
+	resp := reader.request("POST", "/api/requests", `{"isbn":"`+books[2]+`"}`)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("third request: %d, want 429", resp.StatusCode)
+	}
+	// Free again a day after the first.
+	if after, _ := strconv.Atoi(resp.Header.Get("Retry-After")); after < 23*3600 || after > 24*3600 {
+		t.Errorf("Retry-After %q", resp.Header.Get("Retry-After"))
+	}
+	// Admins aren't limited.
+	for _, b := range books {
+		resp := env.admin.request("POST", "/api/requests", `{"isbn":"`+b+`"}`)
+		resp.Body.Close()
+		if resp.StatusCode == http.StatusTooManyRequests {
+			t.Errorf("admin limited on %s", b)
+		}
+	}
+
+	// The gap between two.
+	env = newTestServerWith(t, Options{LoginBurst: 1000, LookupBurst: 1000, LookupISBN: found, RequestGap: time.Hour})
+	reader = addReader(t, env)
+	reader.do("POST", "/api/requests", `{"isbn":"`+books[0]+`"}`, http.StatusCreated, nil)
+	reader.do("POST", "/api/requests", `{"isbn":"`+books[1]+`"}`, http.StatusTooManyRequests, nil)
+}
+
+func TestWriteLimit(t *testing.T) {
+	env := newTestServerWith(t, Options{LoginBurst: 1000, WriteBurst: 5})
+	reader := addReader(t, env)
+	for range 5 {
+		reader.do("DELETE", "/api/me/reading", "", http.StatusNoContent, nil)
+	}
+	reader.do("DELETE", "/api/me/reading", "", http.StatusTooManyRequests, nil)
+	// Reading isn't limited, and each user has their own allowance.
+	reader.do("GET", "/api/me", "", http.StatusOK, nil)
+	env.admin.do("DELETE", "/api/me/reading", "", http.StatusNoContent, nil)
 }

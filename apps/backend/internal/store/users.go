@@ -45,14 +45,30 @@ func scanUser(row interface{ Scan(...any) error }) (User, error) {
 	return u, err
 }
 
+// CreateUser gives each user an ID never used before, see id_counters.
 func (s *Store) CreateUser(username, passwordHash, role string, mustChangePassword bool) (User, error) {
-	u, err := scanUser(s.db.QueryRow(`
-		INSERT INTO users (username, password_hash, role, must_change_password) VALUES (?, ?, ?, ?)
-		RETURNING `+userColumns, username, passwordHash, role, mustChangePassword))
+	tx, err := s.db.Begin()
+	if err != nil {
+		return User{}, err
+	}
+	defer tx.Rollback()
+	var id int64
+	if err := tx.QueryRow(`
+		INSERT INTO id_counters (name, last) VALUES ('users', 1)
+		ON CONFLICT (name) DO UPDATE SET last = MAX(last, (SELECT COALESCE(MAX(id), 0) FROM users)) + 1
+		RETURNING last`).Scan(&id); err != nil {
+		return User{}, err
+	}
+	u, err := scanUser(tx.QueryRow(`
+		INSERT INTO users (id, username, password_hash, role, must_change_password) VALUES (?, ?, ?, ?, ?)
+		RETURNING `+userColumns, id, username, passwordHash, role, mustChangePassword))
 	if err != nil && strings.Contains(err.Error(), "UNIQUE") {
 		return User{}, ErrUsernameTaken
 	}
-	return u, err
+	if err != nil {
+		return User{}, err
+	}
+	return u, tx.Commit()
 }
 
 func (s *Store) GetUser(id int64) (User, error) {

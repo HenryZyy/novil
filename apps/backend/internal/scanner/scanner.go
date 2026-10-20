@@ -87,6 +87,11 @@ func walk(root, start string) (map[string]*Series, error) {
 		if d.IsDir() {
 			return nil
 		}
+		// A link could point anywhere on the server, outside the library.
+		if d.Type()&fs.ModeSymlink != 0 {
+			slog.Warn("skipping symbolic link", "path", p)
+			return nil
+		}
 		format, ok := Formats[strings.ToLower(filepath.Ext(p))]
 		if !ok {
 			return nil

@@ -72,3 +72,20 @@ func TestScanSkipsUnreadableFolder(t *testing.T) {
 		t.Errorf("got %+v, want only Readable", series)
 	}
 }
+
+// A link in a library could point at any file on the server.
+func TestScanSkipsSymlinks(t *testing.T) {
+	root, outside := t.TempDir(), t.TempDir()
+	testutil.WriteCBZ(t, filepath.Join(root, "Akira", "Vol 1.cbz"), "01.jpg")
+	testutil.WriteCBZ(t, filepath.Join(outside, "secret.cbz"), "01.jpg")
+	if err := os.Symlink(filepath.Join(outside, "secret.cbz"), filepath.Join(root, "Akira", "Vol 2.cbz")); err != nil {
+		t.Skip("can't make symlinks here:", err)
+	}
+	series, err := Scan(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(series) != 1 || len(series[0].Books) != 1 || series[0].Books[0].Title != "Vol 1" {
+		t.Errorf("scanned %+v", series)
+	}
+}

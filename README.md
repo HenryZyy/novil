@@ -50,6 +50,20 @@ Login and password changes are rate limited per IP: 5 attempts at once, then
 one more every 12 seconds. Beyond that the API answers `429` with a
 `Retry-After` header (seconds to wait).
 
+### Security
+
+- **Cookies and other sites:** requests that change something and log in
+  with the cookie must come from novil's own pages (checked with the
+  browser's `Sec-Fetch-Site` and `Origin` headers). Other sites get `403` with code
+  `cross_site`. Clients that send the token in the `Authorization` header
+  aren't affected.
+- **Pages:** the web app is served with a strict Content-Security-Policy:
+  scripts only from novil's own files, so scripts in EPUBs never run.
+- **Rate limits:**
+  - Each user may make about 300 changes at once, then 3 a second.
+  - Users (not admins) may request 10 books a day, 30 seconds apart.
+  - Every limit answers `429` with `Retry-After`.
+
 ### Errors
 
 Errors are JSON: `{"error": "human-readable message"}`. Auth errors also have
@@ -113,6 +127,7 @@ a `code` to check instead of the message:
 | `DELETE /api/annotations/{id}` | user | Delete it |
 | `GET /api/isbn/{isbn}` | user | Look up a book to request, see below |
 | `POST /api/requests` | user | `{"isbn"}` requests a book |
+| `GET /api/requests/{id}/cover` | user | A request's cover as a JPEG, saved when the book was requested |
 | `GET /api/me/requests` | user | The books you requested and what became of them |
 | `DELETE /api/me/requests/{id}` | user | Withdraw your request |
 | `GET /api/requests?status=…` | admin | All requests (`open`, `added` or `declined`), the most wanted first |
@@ -196,6 +211,10 @@ you to their request (`requestCount`), and asking twice answers `409`
 (`already_requested`, or `already_added` once it's in the library). Admins
 see who asked (`requesters`). Withdrawing the last request of an open book
 deletes it; asking for a declined book opens it again.
+
+Lookups are remembered, found books for 30 days and unknown ISBNs for a
+day, and a request's cover is downloaded once and kept with it, so views
+don't call the book databases again.
 
 Google Books shares a small daily quota between everyone without an API
 key; set `NOVIL_GOOGLE_BOOKS_KEY` for reliable lookups.

@@ -38,7 +38,8 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
+	// It holds the database and the token key: only for the server.
+	if err := os.MkdirAll(cfg.DataDir, 0o700); err != nil {
 		return err
 	}
 	database, err := db.Open(filepath.Join(cfg.DataDir, "novil.db"))
@@ -74,6 +75,9 @@ func run() error {
 		Addr:              cfg.Addr,
 		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,
+		// Uploads can be large and slow, so bodies have no overall limit;
+		// JSON handlers set their own deadline (see api.decodeJSON).
+		IdleTimeout: 2 * time.Minute,
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

@@ -31,6 +31,7 @@ type Server struct {
 	tokens         *auth.Tokens
 	loginLimiter   *limiter
 	lookupLimiter  *limiter
+	writeLimiter   *limiter
 	pdfs           pdfCounter
 	trustedProxies []netip.Prefix
 	opts           Options
@@ -54,6 +55,15 @@ type Options struct {
 	// ISBN lookups call other services, so each IP may make LookupBurst at
 	// once, then one every 3 seconds. Zero means 10.
 	LookupBurst int
+	// Each user may make WriteBurst changes (anything but GET) at once, then
+	// three a second: plenty for reading and managing, not for flooding the
+	// server. Zero means 300.
+	WriteBurst int
+	// Users (not admins) may request RequestsPerDay books a day, with
+	// RequestGap between two. Zero means 10 and 30 seconds; a negative gap
+	// means none.
+	RequestsPerDay int
+	RequestGap     time.Duration
 	// Covers makes covers from book files. Nil means a new one.
 	Covers *cover.Generator
 	// LookupISBN finds the book of an ISBN for requests. Nil means none
@@ -75,6 +85,15 @@ func New(st *store.Store, tokens *auth.Tokens, opts Options) http.Handler {
 	if opts.LookupBurst == 0 {
 		opts.LookupBurst = 10
 	}
+	if opts.WriteBurst == 0 {
+		opts.WriteBurst = 300
+	}
+	if opts.RequestsPerDay == 0 {
+		opts.RequestsPerDay = 10
+	}
+	if opts.RequestGap == 0 {
+		opts.RequestGap = 30 * time.Second
+	}
 	if opts.FetchCover == nil {
 		opts.FetchCover = isbn.FetchCover
 	}
@@ -86,6 +105,7 @@ func New(st *store.Store, tokens *auth.Tokens, opts Options) http.Handler {
 		tokens:         tokens,
 		loginLimiter:   newLimiter(opts.LoginInterval, opts.LoginBurst),
 		lookupLimiter:  newLimiter(3*time.Second, opts.LookupBurst),
+		writeLimiter:   newLimiter(time.Second/3, opts.WriteBurst),
 		trustedProxies: opts.TrustedProxies,
 		opts:           opts,
 	}
@@ -148,6 +168,8 @@ func New(st *store.Store, tokens *auth.Tokens, opts Options) http.Handler {
 	mux.HandleFunc("GET /api/me/requests", s.guard(member, s.myRequests))
 	mux.HandleFunc("DELETE /api/me/requests/{id}", s.guard(member, s.withdrawRequest))
 	mux.HandleFunc("GET /api/requests", s.guard(adminOnly, s.listRequests))
+	// Limited like lookups: a cover not saved yet is downloaded now.
+	mux.HandleFunc("GET /api/requests/{id}/cover", s.guard(member, s.limitLookups(s.getRequestCover)))
 	mux.HandleFunc("PATCH /api/requests/{id}", s.guard(adminOnly, s.updateRequest))
 	mux.HandleFunc("DELETE /api/requests/{id}", s.guard(adminOnly, s.deleteRequest))
 
@@ -162,7 +184,7 @@ func New(st *store.Store, tokens *auth.Tokens, opts Options) http.Handler {
 	if opts.WebDir != "" {
 		mux.Handle("/", spa(opts.WebDir))
 	}
-	return cors(opts.CORSOrigins, mux)
+	return securityHeaders(cors(opts.CORSOrigins, mux))
 }
 
 func spa(dir string) http.Handler {
@@ -540,7 +562,10 @@ func (s *Server) book(w http.ResponseWriter, r *http.Request) (store.Book, bool)
 	return s.withPages(b), true
 }
 
+// decodeJSON reads a JSON body of at most 1 MB, which must arrive within
+// 30 seconds: a client sending it slowly can't hold the connection.
 func decodeJSON(w http.ResponseWriter, r *http.Request, v any) error {
+	http.NewResponseController(w).SetReadDeadline(time.Now().Add(30 * time.Second))
 	return json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(v)
 }
 

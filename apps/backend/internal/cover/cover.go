@@ -30,8 +30,10 @@ const (
 	MaxHeight = 1200
 	quality   = 85
 	// maxPixels guards against "decompression bombs": tiny files that
-	// claim to be huge images and would use gigabytes of memory.
-	maxPixels = 50_000_000
+	// claim to be huge images and would use gigabytes of memory. Avatars,
+	// which every user can upload, get less.
+	maxPixels       = 50_000_000
+	maxAvatarPixels = 16_000_000
 )
 
 var (
@@ -87,8 +89,10 @@ func (g *Generator) FromBook(path, format string) ([]byte, error) {
 	var err error
 	switch format {
 	case "cbz":
+		defer decoding()()
 		img, err = cbzCover(path)
 	case "epub":
+		defer decoding()()
 		img, err = epubCover(path)
 	case "pdf":
 		img, err = g.pdf.firstPage(path)
@@ -104,7 +108,8 @@ func (g *Generator) FromBook(path, format string) ([]byte, error) {
 // FromUpload checks that r is an image and turns it into a cover.
 // Re-encoding also drops anything else the file might carry.
 func FromUpload(r io.Reader) ([]byte, error) {
-	img, err := decode(r)
+	defer decoding()()
+	img, err := decode(r, maxPixels)
 	if err != nil {
 		return nil, err
 	}
@@ -125,7 +130,7 @@ func cbzCover(path string) (image.Image, error) {
 		return nil, err
 	}
 	defer page.Close()
-	return decode(page)
+	return decode(page, maxPixels)
 }
 
 func epubCover(path string) (image.Image, error) {
@@ -146,11 +151,21 @@ func epubCover(path string) (image.Image, error) {
 		return nil, fmt.Errorf("cover %s: %w", name, err)
 	}
 	defer f.Close()
-	return decode(f)
+	return decode(f, maxPixels)
 }
 
 // decode reads an image, refusing ones too large to decode safely.
-func decode(r io.Reader) (image.Image, error) {
+// slots allows two images in memory at once, however many requests decode
+// them: a large image can take hundreds of MB once decoded.
+var slots = make(chan struct{}, 2)
+
+// decoding waits for a slot and returns the function that frees it.
+func decoding() func() {
+	slots <- struct{}{}
+	return func() { <-slots }
+}
+
+func decode(r io.Reader, limit int) (image.Image, error) {
 	// DecodeConfig only reads the header, so keep a copy of what it reads
 	// for the real decode.
 	var head bytes.Buffer
@@ -158,7 +173,7 @@ func decode(r io.Reader) (image.Image, error) {
 	if err != nil {
 		return nil, ErrNotAnImage
 	}
-	if cfg.Width <= 0 || cfg.Height <= 0 || cfg.Width*cfg.Height > maxPixels {
+	if cfg.Width <= 0 || cfg.Height <= 0 || cfg.Width*cfg.Height > limit {
 		return nil, fmt.Errorf("image is %dx%d, too large", cfg.Width, cfg.Height)
 	}
 	img, _, err := image.Decode(io.MultiReader(&head, r))
@@ -182,7 +197,8 @@ const AvatarSize = 256
 // AvatarFromUpload checks that r is an image and turns it into a square
 // profile picture: the middle of the image, at most AvatarSize wide.
 func AvatarFromUpload(r io.Reader) ([]byte, error) {
-	img, err := decode(r)
+	defer decoding()()
+	img, err := decode(r, maxAvatarPixels)
 	if err != nil {
 		return nil, err
 	}

@@ -6,10 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"slices"
 	"strings"
+	"syscall"
 	"time"
 	"unicode"
 )
@@ -32,7 +35,50 @@ type Info struct {
 // Lookup is a function that finds the book of an ISBN-13.
 type Lookup func(ctx context.Context, isbn string) (Info, error)
 
-var client = &http.Client{Timeout: 8 * time.Second}
+// client only talks to public HTTPS servers: the book databases and the
+// cover hosts they name. A redirect to plain HTTP or to an address inside
+// the network (the server's own, a router's) is refused, whoever sent it.
+var client = &http.Client{
+	Timeout: 8 * time.Second,
+	Transport: &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout: 5 * time.Second,
+			Control: func(network, address string, _ syscall.RawConn) error {
+				ap, err := netip.ParseAddrPort(address)
+				if err != nil {
+					return err
+				}
+				if ip := ap.Addr().Unmap(); !ip.IsGlobalUnicast() || ip.IsPrivate() {
+					return fmt.Errorf("%s isn't a public address", ip)
+				}
+				return nil
+			},
+		}).DialContext,
+		TLSHandshakeTimeout: 5 * time.Second,
+	},
+	CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		if req.URL.Scheme != "https" {
+			return fmt.Errorf("redirect to %s isn't HTTPS", req.URL.Redacted())
+		}
+		if len(via) >= 5 {
+			return errors.New("too many redirects")
+		}
+		return nil
+	},
+}
+
+// maxAnswerBytes is plenty for a lookup's JSON.
+const maxAnswerBytes = 2 << 20
+
+// withoutQuery is a URL as errors show it: without its query, which can
+// hold an API key.
+func withoutQuery(u string) string {
+	if i := strings.IndexByte(u, '?'); i >= 0 {
+		return u[:i]
+	}
+	return u
+}
 
 // Online returns a Lookup that asks Open Library and Google Books at once.
 // Google's titles and authors tend to be cleaner, Open Library's covers
@@ -76,24 +122,27 @@ func online(ctx context.Context, isbn, googleKey string) (Info, error) {
 	}, nil
 }
 
-func getJSON(ctx context.Context, u string, v any) error {
+func getJSON(ctx context.Context, u string, v any, header http.Header) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return err
 	}
+	for k, vs := range header {
+		req.Header[k] = vs
+	}
 	req.Header.Set("User-Agent", "novil (self-hosted book server)")
 	resp, err := client.Do(req)
 	if err != nil {
-		return err
+		return fmt.Errorf("%s: %w", withoutQuery(u), errors.Unwrap(err))
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusNotFound {
 		return ErrNotFound
 	}
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("%s: %s", u, resp.Status)
+		return fmt.Errorf("%s: %s", withoutQuery(u), resp.Status)
 	}
-	return json.NewDecoder(resp.Body).Decode(v)
+	return json.NewDecoder(io.LimitReader(resp.Body, maxAnswerBytes)).Decode(v)
 }
 
 func openLibrary(ctx context.Context, isbn string) (Info, error) {
@@ -111,7 +160,7 @@ func openLibrary(ctx context.Context, isbn string) (Info, error) {
 		} `json:"cover"`
 	}
 	u := "https://openlibrary.org/api/books?" + url.Values{"bibkeys": {"ISBN:" + isbn}, "format": {"json"}, "jscmd": {"data"}}.Encode()
-	if err := getJSON(ctx, u, &data); err != nil {
+	if err := getJSON(ctx, u, &data, nil); err != nil {
 		return Info{}, err
 	}
 	b, ok := data["ISBN:"+isbn]
@@ -148,11 +197,13 @@ func googleBooks(ctx context.Context, isbn, key string) (Info, error) {
 			} `json:"volumeInfo"`
 		} `json:"items"`
 	}
-	query := url.Values{"q": {"isbn:" + isbn}}
+	// The key goes in a header, so it can't turn up in logged URLs.
+	header := http.Header{}
 	if key != "" {
-		query.Set("key", key)
+		header.Set("X-Goog-Api-Key", key)
 	}
-	if err := getJSON(ctx, "https://www.googleapis.com/books/v1/volumes?"+query.Encode(), &data); err != nil {
+	query := url.Values{"q": {"isbn:" + isbn}}
+	if err := getJSON(ctx, "https://www.googleapis.com/books/v1/volumes?"+query.Encode(), &data, header); err != nil {
 		return Info{}, err
 	}
 	if len(data.Items) == 0 || data.Items[0].VolumeInfo.Title == "" {

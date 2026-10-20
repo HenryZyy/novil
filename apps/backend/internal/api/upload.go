@@ -54,6 +54,11 @@ func (s *Server) uploadBook(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "a file with this name already exists in this series")
 		return
 	}
+	// A linked series folder could put the file anywhere on the server.
+	if info, err := os.Lstat(dir); err == nil && info.Mode()&fs.ModeSymlink != 0 {
+		writeError(w, http.StatusConflict, "this series folder is a link; uploads can't go into it")
+		return
+	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		writeFileError(w, err)
 		return

@@ -36,7 +36,7 @@ func (s *Server) writeSession(w http.ResponseWriter, r *http.Request, user store
 		Expires:  exp,
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
-		Secure:   r.TLS != nil,
+		Secure:   s.secureRequest(r),
 	})
 	writeJSON(w, http.StatusOK, session{Token: token, ExpiresAt: exp, User: user})
 }
@@ -50,6 +50,13 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		Username string `json:"username"`
 		Password string `json:"password"`
 	}
+	// Another site mustn't log the browser into an account of its choosing.
+	if !s.fromOwnPages(r) {
+		writeCodedError(w, http.StatusForbidden, "cross_site", "this request came from another site")
+		return
+	}
+	// Anyone can call this, so it reads only what a login needs.
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
 	if err := decodeJSON(w, r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON body")
 		return
@@ -66,7 +73,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		if user.ID != 0 {
 			known = &user
 		}
-		s.audit(r, "login_failed", known, strings.TrimSpace(req.Username), "")
+		s.audit(r, "login_failed", known, logName(req.Username), "")
 		writeCodedError(w, http.StatusUnauthorized, "invalid_credentials", "wrong username or password")
 		return
 	}
@@ -127,4 +134,14 @@ func (s *Server) changePassword(w http.ResponseWriter, r *http.Request) {
 	}
 	s.audit(r, "password_changed", &user, "", "")
 	s.writeSession(w, r, user)
+}
+
+// logName is a username someone tried, short enough for the log: no
+// username is longer than 32 characters.
+func logName(name string) string {
+	name = strings.TrimSpace(name)
+	if r := []rune(name); len(r) > 64 {
+		return string(r[:64]) + "…"
+	}
+	return name
 }

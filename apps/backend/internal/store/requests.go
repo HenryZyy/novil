@@ -2,6 +2,7 @@ package store
 
 import (
 	"cmp"
+	"database/sql"
 	"errors"
 	"strings"
 	"time"
@@ -173,4 +174,65 @@ func (s *Store) DeleteRequest(id int64) error {
 		return cmp.Or(err, ErrNotFound)
 	}
 	return nil
+}
+
+// RequestCover returns a request's saved cover, nil if it has none yet.
+func (s *Store) RequestCover(id int64) (data []byte, coverURL string, err error) {
+	err = s.db.QueryRow(`SELECT cover, cover_url FROM book_requests WHERE id = ?`, id).Scan(&data, &coverURL)
+	return data, coverURL, notFound(err)
+}
+
+func (s *Store) SetRequestCover(id int64, data []byte) error {
+	_, err := s.db.Exec(`UPDATE book_requests SET cover = ? WHERE id = ?`, data, id)
+	return err
+}
+
+// CachedLookup returns what an ISBN lookup found, as JSON, if it was done
+// since the given times: found books keep longer than "not found".
+func (s *Store) CachedLookup(isbn string, foundSince, missingSince time.Time) (info string, found, ok bool, err error) {
+	var fetched string
+	err = s.db.QueryRow(`SELECT info, found, fetched_at FROM isbn_lookups WHERE isbn = ?`, isbn).Scan(&info, &found, &fetched)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, false, nil
+	}
+	if err != nil {
+		return "", false, false, err
+	}
+	since := missingSince
+	if found {
+		since = foundSince
+	}
+	return info, found, fetched >= since.UTC().Format(timeMillis), nil
+}
+
+func (s *Store) SaveLookup(isbn string, found bool, info string) error {
+	_, err := s.db.Exec(`
+		INSERT INTO isbn_lookups (isbn, found, info, fetched_at) VALUES (?, ?, ?, ?)
+		ON CONFLICT (isbn) DO UPDATE SET found = excluded.found, info = excluded.info, fetched_at = excluded.fetched_at`,
+		isbn, found, info, time.Now().UTC().Format(timeMillis))
+	return err
+}
+
+// RecentRequests returns when the user asked for books since a time,
+// oldest first.
+func (s *Store) RecentRequests(userID int64, since time.Time) ([]time.Time, error) {
+	rows, err := s.db.Query(`SELECT created_at FROM book_request_votes WHERE user_id = ? AND created_at >= ? ORDER BY created_at`,
+		userID, since.UTC().Format(timeMillis))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []time.Time
+	for rows.Next() {
+		var at string
+		if err := rows.Scan(&at); err != nil {
+			return nil, err
+		}
+		t, err := time.Parse(timeMillis, at)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
 }

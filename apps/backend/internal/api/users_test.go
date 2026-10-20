@@ -60,3 +60,19 @@ func TestAdminEditsUsers(t *testing.T) {
 	}
 	anna.do("PATCH", "/api/users/99", `{"role":"admin"}`, http.StatusNotFound, nil)
 }
+
+// A deleted user's token must not fit whoever is created next.
+func TestUserIDsAreNotReused(t *testing.T) {
+	env := newTestServer(t)
+	mallory := addReader(t, env)
+	var me store.User
+	mallory.do("GET", "/api/me", "", http.StatusOK, &me)
+	env.admin.do("DELETE", "/api/users/"+itoa(me.ID), "", http.StatusNoContent, nil)
+
+	var bob store.User
+	env.admin.do("POST", "/api/users", `{"username":"bob","password":"bob-password-1"}`, http.StatusCreated, &bob)
+	if bob.ID == me.ID {
+		t.Fatalf("bob got the deleted user's ID %d", me.ID)
+	}
+	mallory.do("GET", "/api/me", "", http.StatusUnauthorized, nil)
+}

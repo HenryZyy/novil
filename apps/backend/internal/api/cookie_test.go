@@ -124,3 +124,46 @@ func TestLibraryAdminRoutes(t *testing.T) {
 	}
 	env.admin.do("PATCH", "/api/libraries/1", `{"allowUploads":true}`, http.StatusOK, nil)
 }
+
+// A page on another site can't use the login cookie to change anything,
+// nor log the browser in.
+func TestCrossSiteRequests(t *testing.T) {
+	env := newTestServer(t)
+	var s session
+	env.anon(t).do("POST", "/api/auth/login", `{"username":"admin","password":"admin-password"}`, http.StatusOK, &s)
+	send := func(method, path, body string, headers map[string]string) int {
+		req, _ := http.NewRequest(method, env.srv.URL+path, strings.NewReader(body))
+		req.AddCookie(&http.Cookie{Name: tokenCookie, Value: s.Token})
+		for k, v := range headers {
+			req.Header.Set(k, v)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+	newUser := `{"username":"evil","password":"evil-password-1","role":"admin"}`
+	for _, h := range []map[string]string{
+		{"Sec-Fetch-Site": "cross-site"},
+		{"Sec-Fetch-Site": "same-site"},
+		{"Origin": "https://evil.example"},
+	} {
+		if got := send("POST", "/api/users", newUser, h); got != http.StatusForbidden {
+			t.Errorf("%v: %d, want 403", h, got)
+		}
+		if got := send("POST", "/api/auth/login", `{"username":"admin","password":"admin-password"}`, h); got != http.StatusForbidden {
+			t.Errorf("login %v: %d, want 403", h, got)
+		}
+	}
+	// Reading is fine from anywhere the cookie goes; so are novil's pages.
+	if got := send("GET", "/api/me", "", map[string]string{"Sec-Fetch-Site": "cross-site"}); got != http.StatusOK {
+		t.Errorf("GET: %d", got)
+	}
+	if got := send("POST", "/api/users", newUser, map[string]string{"Sec-Fetch-Site": "same-origin"}); got != http.StatusCreated {
+		t.Errorf("same origin: %d", got)
+	}
+	// The token header isn't sent by browsers on their own, so it's fine.
+	env.admin.do("DELETE", "/api/me/reading", "", http.StatusNoContent, nil)
+}

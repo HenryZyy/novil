@@ -9,6 +9,8 @@ services:
     env_file:
       - path: apps/backend/.env
         required: false
+    # Plain HTTP on every network interface. Behind a reverse proxy with
+    # HTTPS, use "127.0.0.1:8080:8080" so only the proxy can reach it.
     ports:
       - "8080:8080"
     volumes:

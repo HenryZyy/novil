@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"novil/backend/internal/auth"
@@ -29,6 +30,8 @@ type authKey struct{}
 type authInfo struct {
 	user   store.User
 	claims auth.Claims
+	// cookie is true when the login came from the cookie, not a header.
+	cookie bool
 }
 
 // guard wraps a handler so it only runs for requests with a valid token from
@@ -42,6 +45,10 @@ func (s *Server) guard(a access, next http.HandlerFunc) http.HandlerFunc {
 		if !ok {
 			return
 		}
+		if info.cookie && !s.fromOwnPages(r) {
+			writeCodedError(w, http.StatusForbidden, "cross_site", "this request came from another site")
+			return
+		}
 		if info.user.MustChangePassword && a != pendingPassword {
 			writeCodedError(w, http.StatusForbidden, "password_change_required", "change your password first")
 			return
@@ -49,6 +56,12 @@ func (s *Server) guard(a access, next http.HandlerFunc) http.HandlerFunc {
 		if a == adminOnly && info.user.Role != store.RoleAdmin {
 			writeCodedError(w, http.StatusForbidden, "forbidden", "only admins can do this")
 			return
+		}
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			if d := s.writeLimiter.wait(strconv.FormatInt(info.user.ID, 10)); d > 0 {
+				tooMany(w, d, "too many changes at once, slow down a little")
+				return
+			}
 		}
 		next(w, r.WithContext(context.WithValue(r.Context(), authKey{}, info)))
 	}
@@ -58,6 +71,7 @@ func (s *Server) guard(a access, next http.HandlerFunc) http.HandlerFunc {
 // response and returning false if there is no valid token.
 func (s *Server) authenticate(w http.ResponseWriter, r *http.Request) (authInfo, bool) {
 	token, ok := bearerToken(r)
+	cookie := !ok
 	if !ok {
 		c, err := r.Cookie(tokenCookie)
 		if err != nil || c.Value == "" {
@@ -94,7 +108,7 @@ func (s *Server) authenticate(w http.ResponseWriter, r *http.Request) (authInfo,
 		unauthorized(w, "invalid or expired token")
 		return authInfo{}, false
 	}
-	return authInfo{user: user, claims: claims}, true
+	return authInfo{user: user, claims: claims, cookie: cookie}, true
 }
 
 // currentUser returns the user a guard let through. Only call it in
