@@ -361,9 +361,10 @@ func (s *Store) SearchBooks(userID int64, q BookQuery) ([]Book, error) {
 		ORDER BY s.name COLLATE NOCASE, b.sort_order`, userID, q.LibraryID, q.Search, q.Hidden)
 }
 
-// ContinueReading returns the books the user has started but not finished.
+// ContinueReading returns the books the user has started but not finished,
+// leaving out the ones they dismissed.
 func (s *Store) ContinueReading(userID int64, limit int) ([]Book, error) {
-	return s.listBooks(` WHERE p.page > 0 AND NOT p.completed AND `+visibleTo("b")+` ORDER BY p.updated_at DESC LIMIT ?2`, userID, limit)
+	return s.listBooks(` WHERE p.page > 0 AND NOT p.completed AND NOT p.dismissed AND `+visibleTo("b")+` ORDER BY p.updated_at DESC LIMIT ?2`, userID, limit)
 }
 
 func (s *Store) GetBook(userID, id int64) (Book, error) {
@@ -399,7 +400,7 @@ func (s *Store) SetProgress(userID int64, p Progress) (Progress, error) {
 		INSERT INTO progress (user_id, book_id, page, position, completed, updated_at) VALUES (?, ?, ?, ?, ?, ?)
 		ON CONFLICT (user_id, book_id) DO UPDATE SET
 			page = excluded.page, position = excluded.position, completed = excluded.completed,
-			updated_at = excluded.updated_at`,
+			updated_at = excluded.updated_at, dismissed = 0`,
 		userID, p.BookID, p.Page, p.Position, p.Completed, p.UpdatedAt.Format(timeMillis))
 	return p, err
 }
@@ -414,6 +415,19 @@ func (s *Store) SetHidden(bookID int64, hidden bool) error {
 func (s *Store) SetSeriesHidden(seriesID int64, hidden bool) error {
 	_, err := s.db.Exec(`UPDATE books SET hidden = ? WHERE series_id = ?`, hidden, seriesID)
 	return err
+}
+
+// DismissContinue takes a book out of the user's Continue reading, keeping
+// their progress, until they read on.
+func (s *Store) DismissContinue(userID, bookID int64) error {
+	res, err := s.db.Exec(`UPDATE progress SET dismissed = 1 WHERE user_id = ? AND book_id = ?`, userID, bookID)
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err != nil || n == 0 {
+		return cmp.Or(err, ErrNotFound)
+	}
+	return nil
 }
 
 // SetSeriesRead marks every book in a series as read, or clears the

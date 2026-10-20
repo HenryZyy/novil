@@ -87,6 +87,7 @@ a `code` to check instead of the message:
 | `POST /api/libraries/{id}/scan` | admin | Rescan a library's files |
 | `PATCH /api/libraries/{id}` | admin | `{"allowUploads": true}` turns uploads into this library on or off |
 | `POST /api/libraries/{id}/books?series=…&filename=…` | admin | Upload a book: the raw file as the body. Only `.cbz`, `.epub` and `.pdf`, and the content must really be that format |
+| `DELETE /api/continue/{id}` | user | Take a book out of your Continue reading; your progress stays, and reading on brings it back |
 | `GET /api/series?library={id}&list=…` | user | List series, optionally of one library or one of your lists (`favorites`, `want`) |
 | `PUT /api/series/{id}/lists/{list}` | user | Put a series on your `favorites` or `want` (want to read) list |
 | `DELETE /api/series/{id}/lists/{list}` | user | Take it off again |

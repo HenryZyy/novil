@@ -122,6 +122,7 @@ func New(st *store.Store, tokens *auth.Tokens, opts Options) http.Handler {
 	mux.HandleFunc("PUT /api/series/{id}/lists/{list}", s.guard(member, s.setListed))
 	mux.HandleFunc("DELETE /api/series/{id}/lists/{list}", s.guard(member, s.setListed))
 	mux.HandleFunc("GET /api/continue", s.guard(member, s.continueReading))
+	mux.HandleFunc("DELETE /api/continue/{id}", s.guard(member, s.dismissContinue))
 	mux.HandleFunc("GET /api/stats", s.guard(adminOnly, s.stats))
 
 	mux.HandleFunc("GET /api/books", s.guard(adminOnly, s.searchBooks))
@@ -408,6 +409,20 @@ func (s *Server) searchBooks(w http.ResponseWriter, r *http.Request) {
 func (s *Server) continueReading(w http.ResponseWriter, r *http.Request) {
 	books, err := s.store.ContinueReading(currentUser(r).ID, 20)
 	respond(w, books, err)
+}
+
+// dismissContinue takes a book out of Continue reading; reading on in it
+// brings it back.
+func (s *Server) dismissContinue(w http.ResponseWriter, r *http.Request) {
+	b, ok := s.book(w, r)
+	if !ok {
+		return
+	}
+	if err := s.store.DismissContinue(currentUser(r).ID, b.ID); err != nil {
+		respond(w, nil, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) getBook(w http.ResponseWriter, r *http.Request) {

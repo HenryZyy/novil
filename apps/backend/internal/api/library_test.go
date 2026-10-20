@@ -162,3 +162,41 @@ func TestEPUBProgress(t *testing.T) {
 		t.Errorf("book %+v", book)
 	}
 }
+
+func TestDismissContinue(t *testing.T) {
+	env := newTestServer(t)
+	root := t.TempDir()
+	testutil.WriteCBZ(t, filepath.Join(root, "Akira", "Vol 1.cbz"), "01.jpg", "02.jpg", "03.jpg")
+	testutil.WriteCBZ(t, filepath.Join(root, "Akira", "Vol 2.cbz"), "01.jpg", "02.jpg")
+	env.admin.do("POST", "/api/libraries", libraryJSON(t, "Manga", root), http.StatusCreated, nil)
+	env.admin.do("POST", "/api/libraries/1/scan", "", http.StatusOK, nil)
+	reader := addReader(t, env)
+	reader.do("PUT", "/api/books/1/progress", `{"page":2}`, http.StatusOK, nil)
+	env.admin.do("PUT", "/api/books/1/progress", `{"page":2}`, http.StatusOK, nil)
+
+	continuing := func(c *client) int {
+		var books []store.Book
+		c.do("GET", "/api/continue", "", http.StatusOK, &books)
+		return len(books)
+	}
+	reader.do("DELETE", "/api/continue/1", "", http.StatusNoContent, nil)
+	if n := continuing(reader); n != 0 {
+		t.Errorf("after dismissing: %d books", n)
+	}
+	// Only for that user, and the progress stays.
+	if n := continuing(env.admin); n != 1 {
+		t.Errorf("admin's: %d books", n)
+	}
+	var b store.Book
+	reader.do("GET", "/api/books/1", "", http.StatusOK, &b)
+	if b.ReadPage != 2 {
+		t.Errorf("progress lost: %+v", b)
+	}
+	// Reading on brings it back.
+	reader.do("PUT", "/api/books/1/progress", `{"page":3}`, http.StatusOK, nil)
+	if n := continuing(reader); n != 1 {
+		t.Errorf("after reading on: %d books", n)
+	}
+	// A book never opened has nothing to dismiss.
+	reader.do("DELETE", "/api/continue/2", "", http.StatusNotFound, nil)
+}
