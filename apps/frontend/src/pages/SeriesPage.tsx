@@ -7,6 +7,7 @@ import { Row } from '../components/Row'
 import { formatSize, plural } from '../format'
 import { Cover } from '../components/Cover'
 import { DeleteBookDialog } from '../components/DeleteBookDialog'
+import { DeleteSeriesDialog } from '../components/DeleteSeriesDialog'
 import { EditBookDialog } from '../components/EditBookDialog'
 import { Icon } from '../components/Icon'
 
@@ -20,6 +21,7 @@ export function SeriesPage() {
   const setListed = useSetListed()
   const [editing, setEditing] = useState<Book | null>(null)
   const [deleting, setDeleting] = useState<Book | null>(null)
+  const [deletingSeries, setDeletingSeries] = useState(false)
   const [expanded, setExpanded] = useState(false)
   // A state, not a ref: the info only exists once the series has loaded.
   const [info, setInfo] = useState<HTMLDivElement | null>(null)
@@ -100,6 +102,11 @@ export function SeriesPage() {
                 </button>
               </>
             )}
+            {!single && isAdmin(user) && (
+              <button onClick={() => setDeletingSeries(true)} aria-label="Delete series" title="Delete series">
+                <Icon name="trash" size={16} />
+              </button>
+            )}
             {canUpload && (
               <Link to={`/upload?${new URLSearchParams({ library: String(s.libraryId), series: s.name })}`} className="button">
                 Upload to this series
@@ -124,6 +131,7 @@ export function SeriesPage() {
       )}
       {editing && <EditBookDialog key={editing.id} book={editing} onClose={() => setEditing(null)} />}
       {deleting && <DeleteBookDialog book={deleting} onClose={() => setDeleting(null)} />}
+      {deletingSeries && <DeleteSeriesDialog series={s} onClose={() => setDeletingSeries(false)} />}
     </>
   )
 }

@@ -18,7 +18,7 @@ export function DeleteBookDialog({ book, onClose }: { book: Book; onClose: () =>
   }
 
   return (
-    <ConfirmDialog title={`Delete “${book.title}”?`} confirmLabel="Delete book" onConfirm={confirm} onClose={onClose}>
+    <ConfirmDialog title={`Are you sure you want to delete “${book.title}”?`} confirmLabel="Delete book" onConfirm={confirm} onClose={onClose}>
       <p>
         Its file is deleted from the library folder, together with everyone's progress, bookmarks and notes in it.
         {book.title !== book.seriesName && ' If it is the last book of its series, the series goes too.'}

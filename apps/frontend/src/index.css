@@ -10,6 +10,7 @@
   --accent-soft: #f7e1e8;
   --on-accent: #ffffff;
   --error: #c0262d;
+  --on-error: #ffffff;
   font-family: system-ui, sans-serif;
   line-height: 1.5;
 }
@@ -27,6 +28,7 @@
     --accent-soft: #4a3038;
     --on-accent: #2a0f19;
     --error: #ff8a8a;
+  --on-error: #2a0f12;
   }
 }
 
@@ -41,6 +43,7 @@
   --accent-soft: #4a3038;
   --on-accent: #2a0f19;
   --error: #ff8a8a;
+  --on-error: #2a0f12;
 }
 
 /* The readers follow the site theme: their page background is a step
@@ -2624,6 +2627,17 @@ button:not(:disabled):active,
   padding: 0.75rem 1.5rem 1.5rem;
   background: var(--panel);
   border-top: 1px solid var(--line);
+}
+
+/* For actions that delete something. */
+.danger-button {
+  border-color: var(--error);
+  background: var(--error);
+  color: var(--on-error);
+}
+
+.book-admin-edit.danger:hover {
+  color: var(--error);
 }
 
 .isbn-row {

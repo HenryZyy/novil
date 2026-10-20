@@ -99,6 +99,17 @@ export const useDeleteBook = () => {
 
 export const useDismissContinue = () => useInvalidatingMutation(api.dismissContinue)
 
+export const useDeleteSeries = () => {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: api.deleteSeries,
+    onSuccess: (_, id) => {
+      queryClient.removeQueries({ queryKey: ['series', id] })
+      return queryClient.invalidateQueries()
+    },
+  })
+}
+
 export const useSetHidden = () =>
   useInvalidatingMutation(({ id, hidden }: { id: number; hidden: boolean }) => api.setHidden(id, hidden))
 

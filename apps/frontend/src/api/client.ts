@@ -263,6 +263,8 @@ export const api = {
   // Keeps the progress; reading on brings the book back.
   dismissContinue: (bookId: number) => request<void>(`/api/continue/${bookId}`, { method: 'DELETE' }),
   continueReading: () => request<Book[]>('/api/continue'),
+  // Deletes every book's file too.
+  deleteSeries: (id: number) => request<void>(`/api/series/${id}`, { method: 'DELETE' }),
   setSeriesHidden: (id: number, hidden: boolean) => request<Series>(`/api/series/${id}`, json('PATCH', { hidden })),
   searchBooks: (query: BookQuery = {}) => {
     const params = new URLSearchParams()
