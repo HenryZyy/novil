@@ -260,6 +260,8 @@ export const api = {
   setSeriesRead: (id: number, read: boolean) => request<Series>(`/api/series/${id}/read`, json('PUT', { read })),
   setListed: (id: number, list: SeriesList, listed: boolean) =>
     request<Series>(`/api/series/${id}/lists/${list}`, { method: listed ? 'PUT' : 'DELETE' }),
+  // Keeps the progress; reading on brings the book back.
+  dismissContinue: (bookId: number) => request<void>(`/api/continue/${bookId}`, { method: 'DELETE' }),
   continueReading: () => request<Book[]>('/api/continue'),
   setSeriesHidden: (id: number, hidden: boolean) => request<Series>(`/api/series/${id}`, json('PATCH', { hidden })),
   searchBooks: (query: BookQuery = {}) => {

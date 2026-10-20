@@ -3,6 +3,7 @@ import { fileUrl, isReadable, type Book, type Series } from '../api/client'
 import {
   isAdmin,
   useCurrentUser,
+  useDismissContinue,
   useSeries,
   useSetBookRead,
   useSetHidden,
@@ -31,8 +32,9 @@ function listItems(series: Series | undefined, setListed: ReturnType<typeof useS
 }
 
 // inSeries: the card is on its series' page, which has the series' own
-// buttons, so the menu leaves them out.
-export function BookMenu({ book, inSeries = false }: { book: Book; inSeries?: boolean }) {
+// buttons, so the menu leaves them out. inContinue: it's in Continue
+// reading, which the menu can take it out of.
+export function BookMenu({ book, inSeries = false, inContinue = false }: { book: Book; inSeries?: boolean; inContinue?: boolean }) {
   const user = useCurrentUser()
   const [opened, setOpened] = useState(false)
   // The book's series, for the list items; only loaded once the menu opens.
@@ -40,6 +42,7 @@ export function BookMenu({ book, inSeries = false }: { book: Book; inSeries?: bo
   const setRead = useSetBookRead()
   const setListed = useSetListed()
   const setHidden = useSetHidden()
+  const dismiss = useDismissContinue()
   const [editing, setEditing] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const started = book.readPage > 0 && !book.completed
@@ -48,6 +51,9 @@ export function BookMenu({ book, inSeries = false }: { book: Book; inSeries?: bo
     isReadable(book)
       ? { label: started ? 'Continue reading' : 'Read', icon: 'open', to: `/read/${book.id}` }
       : { label: 'Download', icon: 'download', download: fileUrl(book.id) },
+    ...(inContinue
+      ? [{ label: 'Remove from Continue reading', icon: 'close', onSelect: () => dismiss.mutate(book.id) } as const]
+      : []),
     ...(inSeries ? [] : [{ label: 'Go to series', icon: 'folder', to: `/series/${book.seriesId}` } as const]),
     {
       label: book.completed ? 'Mark as unread' : 'Mark as read',

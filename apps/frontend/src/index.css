@@ -933,8 +933,11 @@ button:disabled {
 
 .login {
   display: flex;
+  align-items: center;
   justify-content: center;
-  padding: 10vh 1rem;
+  min-height: 100dvh;
+  padding: 1.5rem 1rem;
+  box-sizing: border-box;
 }
 
 .login .form {

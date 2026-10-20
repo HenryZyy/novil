@@ -138,7 +138,7 @@ function ContinueCard({ book }: { book: Book }) {
           {detail}
         </span>
       </Link>
-      <BookMenu book={book} />
+      <BookMenu book={book} inContinue />
     </div>
   )
 }

@@ -97,6 +97,8 @@ export const useDeleteBook = () => {
   })
 }
 
+export const useDismissContinue = () => useInvalidatingMutation(api.dismissContinue)
+
 export const useSetHidden = () =>
   useInvalidatingMutation(({ id, hidden }: { id: number; hidden: boolean }) => api.setHidden(id, hidden))
 
